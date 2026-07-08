@@ -1,23 +1,34 @@
 /**
- * Room service — handles room creation, joining, and validation.
- * BACKEND: All functions here should call Supabase REST API or RPC functions.
- * Replace mock implementations with actual Supabase client calls.
+ * Room service — room creation and join-time validation.
+ *
+ * There is no database. A room is an ephemeral Supabase Realtime channel that
+ * exists only while at least one person is connected to it. Consequently:
+ *
+ *   - createRoom() does no network I/O — it just mints a unique code. The room
+ *     "comes into existence" when the host connects to the channel on the room
+ *     page and tracks their presence.
+ *
+ *   - getRoomByCode() can't SELECT from a table. Instead it briefly joins the
+ *     channel and inspects presence: if anyone is already there, the room is
+ *     live. If nobody appears within a short window, we treat the code as an
+ *     inactive/non-existent room.
  */
 
 import type { Room } from '@/types/room';
+import { createClient } from '@/lib/supabase/client';
 import { generateRoomCode } from '@/utils/roomCode';
 
+/** How long to wait for presence to appear before deciding a room is empty. */
+const PRESENCE_PROBE_TIMEOUT_MS = 3500;
+
 /**
- * Creates a new room with a generated code.
- * BACKEND: INSERT into rooms table via Supabase client.
+ * Creates a new room by minting a unique code. No I/O — the room becomes real
+ * when the host connects to the channel and tracks presence on the room page.
  */
 export async function createRoom(hostId: string): Promise<Room> {
-  // BACKEND: const { data, error } = await supabase.from('rooms').insert({ code, host_id: hostId }).select().single();
-  await new Promise((resolve) => setTimeout(resolve, 600)); // simulate network
-
   const code = generateRoomCode();
   return {
-    id: `room-${Date.now()}`,
+    id: `room:${code}`,
     code,
     createdAt: new Date().toISOString(),
     hostId,
@@ -26,32 +37,58 @@ export async function createRoom(hostId: string): Promise<Room> {
 }
 
 /**
- * Validates and retrieves a room by code.
- * Returns null if the room does not exist or is expired.
- * BACKEND: SELECT from rooms table where code = roomCode and status = 'active'.
+ * Validates a room code by probing the channel's presence roster.
+ *
+ * Returns a Room if at least one participant is currently connected, otherwise
+ * null (nobody home → treat as not found / expired). This is a temporary,
+ * read-only channel subscription that is torn down before returning.
  */
 export async function getRoomByCode(code: string): Promise<Room | null> {
-  // BACKEND: const { data } = await supabase.from('rooms').select('*').eq('code', code).eq('status', 'active').single();
-  await new Promise((resolve) => setTimeout(resolve, 800)); // simulate network
+  const supabase = createClient();
+  const channel = supabase.channel(`room:${code}`, {
+    // No presence key needed — this is a passive probe; we never track ourselves.
+    config: { broadcast: { self: false } },
+  });
 
-  // Simulate: codes ending in "X" are "expired" for demo purposes
-  if (code.endsWith('X')) return null;
+  return new Promise<Room | null>((resolve) => {
+    let settled = false;
 
-  return {
-    id: `room-mock-${code}`,
-    code,
-    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    hostId: 'user-remote-host',
-    status: 'active',
-  };
-}
+    const finish = (result: Room | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void supabase.removeChannel(channel);
+      resolve(result);
+    };
 
-/**
- * Marks a room as empty/expired when all users leave.
- * BACKEND: UPDATE rooms SET status = 'expired' WHERE id = roomId.
- */
-export async function expireRoom(roomId: string): Promise<void> {
-  // BACKEND: await supabase.from('rooms').update({ status: 'expired' }).eq('id', roomId);
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  console.log(`[roomService] Room ${roomId} marked as expired`);
+    // If presence syncs and shows an existing member (a host or viewer already
+    // in the room), the room is live.
+    const checkPresence = () => {
+      const state = channel.presenceState();
+      const occupants = Object.values(state).flat();
+      if (occupants.length > 0) {
+        finish({
+          id: `room:${code}`,
+          code,
+          createdAt: new Date().toISOString(),
+          hostId: 'unknown', // real host id resolves from presence on the room page
+          status: 'active',
+        });
+      }
+    };
+
+    channel.on('presence', { event: 'sync' }, checkPresence);
+    channel.on('presence', { event: 'join' }, checkPresence);
+
+    const timer = setTimeout(() => finish(null), PRESENCE_PROBE_TIMEOUT_MS);
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        // presenceState may already be populated on subscribe; check immediately.
+        checkPresence();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        finish(null);
+      }
+    });
+  });
 }

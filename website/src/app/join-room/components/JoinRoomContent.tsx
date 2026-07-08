@@ -2,12 +2,13 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Hash, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Hash, Loader2, AlertCircle, ArrowRight, User, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import SyncLogo from '@/components/ui/SyncLogo';
 import { getRoomByCode } from '@/services/roomService';
 import { isValidRoomCodeFormat, normalizeRoomCode } from '@/utils/roomCode';
 import { generateUserId, generateUsername } from '@/utils/username';
+import { setSessionIdentity } from '@/utils/session';
 
 type ErrorType = 'invalid_format' | 'not_found' | 'expired' | 'network' | null;
 
@@ -21,6 +22,7 @@ const ERROR_MESSAGES: Record<NonNullable<ErrorType>, string> = {
 export default function JoinRoomContent() {
   const router = useRouter();
   const [code, setCode] = useState('');
+  const [username, setUsername] = useState(() => generateUsername());
   const [isLoading, setIsLoading] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,6 +47,7 @@ export default function JoinRoomContent() {
     if (isLoading) return;
 
     const trimmed = code.trim();
+    const name = username.trim();
 
     if (!trimmed) {
       inputRef.current?.focus();
@@ -53,6 +56,11 @@ export default function JoinRoomContent() {
 
     if (!isValidRoomCodeFormat(trimmed)) {
       setErrorType('invalid_format');
+      return;
+    }
+
+    if (!name) {
+      toast.error('Pick a display name first');
       return;
     }
 
@@ -74,15 +82,9 @@ export default function JoinRoomContent() {
         return;
       }
 
-      // Store session info
-      // BACKEND: Replace with Supabase presence tracking
+      // Anonymous, per-tab identity (no auth). Presence tracking uses this.
       const userId = generateUserId();
-      const username = generateUsername();
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('syncflix_user_id', userId);
-        sessionStorage.setItem('syncflix_username', username);
-        sessionStorage.setItem('syncflix_role', 'viewer');
-      }
+      setSessionIdentity({ userId, username: name, role: 'viewer' });
 
       toast.success(`Joining room ${room.code}`);
       router.push(`/room-page?code=${room.code}&role=viewer`);
@@ -93,7 +95,7 @@ export default function JoinRoomContent() {
   };
 
   const hasError = errorType !== null;
-  const isReady = code.length === 6 && !hasError && !isLoading;
+  const isReady = code.length === 6 && username.trim().length > 0 && !hasError && !isLoading;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-between bg-background px-6">
@@ -185,6 +187,42 @@ export default function JoinRoomContent() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Display name */}
+          <div className="space-y-2">
+            <label
+              htmlFor="display-name"
+              className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+            >
+              Your name
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+                <User size={15} className="text-muted-foreground" />
+              </div>
+              <input
+                id="display-name"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.slice(0, 20))}
+                onKeyDown={handleKeyDown}
+                placeholder="Your name"
+                maxLength={20}
+                autoComplete="off"
+                disabled={isLoading}
+                className="input-field pl-9 pr-10 text-sm font-medium"
+              />
+              <button
+                type="button"
+                onClick={() => setUsername(generateUsername())}
+                disabled={isLoading}
+                title="Suggest another name"
+                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-primary transition-colors duration-150 disabled:opacity-40"
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
           </div>
 
           {/* Submit */}

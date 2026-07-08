@@ -86,7 +86,8 @@ export type SyncEventType =
   | 'HEARTBEAT'
   | 'PLATFORM_CHANGED'
   | 'USER_CONNECTED'
-  | 'USER_DISCONNECTED';
+  | 'USER_DISCONNECTED'
+  | 'CHAT_MESSAGE';
 
 export interface SyncEvent {
   id: string;

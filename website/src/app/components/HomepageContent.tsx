@@ -2,31 +2,33 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Hash, ArrowRight, Loader2 } from 'lucide-react';
+import { Plus, Hash, ArrowRight, Loader2, User, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import SyncLogo from '@/components/ui/SyncLogo';
 import { createRoom } from '@/services/roomService';
 import { generateUserId, generateUsername } from '@/utils/username';
+import { setSessionIdentity } from '@/utils/session';
 
 export default function HomepageContent() {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
+  // Prefilled with a random suggestion; the user can edit or re-roll it.
+  const [username, setUsername] = useState(() => generateUsername());
 
   const handleCreateRoom = async () => {
     if (isCreating) return;
+    const name = username.trim();
+    if (!name) {
+      toast.error('Pick a display name first');
+      return;
+    }
     setIsCreating(true);
 
     try {
       const userId = generateUserId();
-      const username = generateUsername();
 
-      // Store session info
-      // BACKEND: This would be replaced with Supabase session/presence tracking
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('syncflix_user_id', userId);
-        sessionStorage.setItem('syncflix_username', username);
-        sessionStorage.setItem('syncflix_role', 'host');
-      }
+      // Anonymous, per-tab identity (no auth). Presence tracking uses this.
+      setSessionIdentity({ userId, username: name, role: 'host' });
 
       const room = await createRoom(userId);
 
@@ -62,11 +64,46 @@ export default function HomepageContent() {
           </div>
         </div>
 
+        {/* Display name */}
+        <div className="w-full mb-3">
+          <label
+            htmlFor="display-name"
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+          >
+            Your name
+          </label>
+          <div className="relative mt-1.5">
+            <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+              <User size={15} className="text-muted-foreground" />
+            </div>
+            <input
+              id="display-name"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value.slice(0, 20))}
+              placeholder="Your name"
+              maxLength={20}
+              autoComplete="off"
+              disabled={isCreating}
+              className="input-field pl-9 pr-10 text-sm font-medium"
+            />
+            <button
+              type="button"
+              onClick={() => setUsername(generateUsername())}
+              disabled={isCreating}
+              title="Suggest another name"
+              className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-primary transition-colors duration-150 disabled:opacity-40"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
+
         {/* CTAs */}
         <div className="w-full space-y-3">
           <button
             onClick={handleCreateRoom}
-            disabled={isCreating}
+            disabled={isCreating || !username.trim()}
             className="btn-primary w-full py-3.5 text-sm font-semibold"
           >
             {isCreating ? (
