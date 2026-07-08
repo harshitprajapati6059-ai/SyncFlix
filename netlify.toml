@@ -1,0 +1,14 @@
+# Netlify deployment config for SyncFlix.
+#
+# The Next.js app lives in the `website/` subdirectory, so `base` points Netlify
+# there — all build commands and paths below are relative to `website/`.
+# The official Next.js plugin (already in website/package.json devDependencies)
+# handles SSR, routing, and middleware automatically.
+
+[build]
+  base = "website"
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

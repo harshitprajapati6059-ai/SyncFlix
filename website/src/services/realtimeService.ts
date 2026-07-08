@@ -72,8 +72,21 @@ interface BroadcastEnvelope {
 export function createRealtimeChannel(roomCode: string, user: ChannelUser): RealtimeChannel {
   const supabase = createClient();
   const joinedAt = new Date().toISOString();
+  const topic = `room:${roomCode}`;
 
-  const channel: SupabaseRealtimeChannel = supabase.channel(`room:${roomCode}`, {
+  // Supabase reuses channels by topic. If a channel with this topic already
+  // exists (e.g. React StrictMode remounted the effect before the previous
+  // channel finished tearing down), remove it first so we get a pristine
+  // channel. Registering `.on()` handlers on an already-subscribed channel
+  // throws "cannot add callbacks after subscribe()".
+  supabase
+    .getChannels()
+    .filter((c) => c.topic === `realtime:${topic}`)
+    .forEach((c) => {
+      void supabase.removeChannel(c);
+    });
+
+  const channel: SupabaseRealtimeChannel = supabase.channel(topic, {
     config: {
       presence: { key: user.userId },
       broadcast: { self: true }, // echo our own events back so local UI stays consistent
