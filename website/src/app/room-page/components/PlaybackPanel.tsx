@@ -13,9 +13,9 @@ export default function PlaybackPanel() {
   const progressPct = Math.min(100, (playbackState?.currentTime / totalMockDuration) * 100);
 
   return (
-    <div className="flex-1 flex flex-col p-5 gap-5 overflow-auto scrollbar-thin">
+    <div className="flex-1 flex flex-col p-4 sm:p-5 gap-4 sm:gap-5 overflow-auto scrollbar-thin">
       {/* Section header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Playback State
         </h2>
@@ -27,11 +27,11 @@ export default function PlaybackPanel() {
         />
       </div>
       {/* Playback status card */}
-      <div className="card p-5 space-y-5">
+      <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5">
         {/* Platform + Status row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <Wifi size={15} className="text-muted-foreground" />
             </div>
             <div>
@@ -43,7 +43,7 @@ export default function PlaybackPanel() {
           </div>
 
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold shrink-0 ${
               playbackState?.playing
                 ? 'bg-[var(--status-synced-bg)] text-[var(--status-synced)]'
                 : 'bg-[var(--status-warning-bg)] text-[var(--status-warning)]'

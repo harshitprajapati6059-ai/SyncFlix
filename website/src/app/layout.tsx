@@ -24,11 +24,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'SyncFlix — Minimal UI. Maximum Synchronization.',
+  title: {
+    default: 'SyncFlix - Watch Together in Perfect Sync',
+    template: '%s | SyncFlix',
+  },
   description:
-    'SyncFlix synchronizes video playback between friends across any streaming platform — no streaming, just sync.',
+    'SyncFlix synchronizes video playback between friends across any streaming platform. No streaming, just sync.',
   icons: {
-    icon: [{ url: '/favicon.ico', type: 'image/x-icon' }],
+    icon: '/icon.svg?v=2',
   },
 };
 

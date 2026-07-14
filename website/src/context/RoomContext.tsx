@@ -38,6 +38,7 @@ import type {
   UserRole,
 } from '@/types/room';
 import { createRealtimeChannel, type RealtimeChannel } from '@/services/realtimeService';
+import { connectExtensionBridge, sendSyncEventToExtension } from '@/services/extensionBridge';
 import { getSessionIdentity } from '@/utils/session';
 
 interface RoomContextValue extends RoomContextState {
@@ -108,7 +109,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   const [users, setUsers] = useState<PresenceUser[]>([]);
   const [playbackState, setPlaybackState] = useState<PlaybackState>(INITIAL_PLAYBACK);
   const [syncState, setSyncState] = useState<SyncState>(INITIAL_SYNC);
-  const [extensionState] = useState<ExtensionState>(INITIAL_EXTENSION);
+  const [extensionState, setExtensionState] = useState<ExtensionState>(INITIAL_EXTENSION);
   const [connectionStatus, setConnectionStatus] =
     useState<RoomContextState['connectionStatus']>('connecting');
   const [events, setEvents] = useState<SyncEvent[]>([]);
@@ -152,11 +153,21 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   useEffect(() => {
     if (code === '------') return; // no valid room code
 
-    const channel = createRealtimeChannel(code, {
-      userId: identity.userId,
-      username: identity.username,
-      role,
-    });
+    let channel: RealtimeChannel;
+    try {
+      channel = createRealtimeChannel(code, {
+        userId: identity.userId,
+        username: identity.username,
+        role,
+      });
+    } catch (err) {
+      // Most likely: placeholder/missing Supabase credentials. Surface one
+      // actionable message instead of letting the client retry a dead host.
+      // warn (not error) so the Next.js dev overlay doesn't flag it as an issue.
+      console.warn('[SyncFlix] Realtime unavailable:', err instanceof Error ? err.message : err);
+      setConnectionStatus('error');
+      return;
+    }
     channelRef.current = channel;
 
     channel.onStatusChange((status) => {
@@ -187,6 +198,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         },
         userId
       );
+      if (userId !== identity.userId) sendSyncEventToExtension('PLAY', payload);
       logEvent('PLAY', userId, username, payload);
     });
 
@@ -199,6 +211,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         },
         userId
       );
+      if (userId !== identity.userId) sendSyncEventToExtension('PAUSE', payload);
       logEvent('PAUSE', userId, username, payload);
     });
 
@@ -207,6 +220,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         { currentTime: typeof payload.to === 'number' ? payload.to : undefined },
         userId
       );
+      if (userId !== identity.userId) sendSyncEventToExtension('SEEK', payload);
       logEvent('SEEK', userId, username, payload);
     });
 
@@ -215,6 +229,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         { playbackRate: typeof payload.rate === 'number' ? payload.rate : undefined },
         userId
       );
+      if (userId !== identity.userId) sendSyncEventToExtension('PLAYBACK_SPEED', payload);
       logEvent('PLAYBACK_SPEED', userId, username, payload);
     });
 
@@ -229,6 +244,9 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       const hostTime = typeof payload.currentTime === 'number' ? payload.currentTime : null;
       const hostPlaying = Boolean(payload.playing);
       if (hostTime === null) return;
+
+      // Let the extension's sync engine correct the real video against the host.
+      sendSyncEventToExtension('POSITION_UPDATE', payload);
 
       setPlaybackState((prev) => {
         const drift = prev.currentTime - hostTime;
@@ -288,6 +306,45 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
+  // ─── Extension bridge ────────────────────────────────────────────────────────
+  // Detects the browser extension and exchanges playback events with it.
+  // Harmless no-op when the extension isn't installed (pings go unanswered).
+  useEffect(() => {
+    const disconnect = connectExtensionBridge({
+      onStateChange: (state) => {
+        setExtensionState(state);
+        if (state.platform) {
+          setPlaybackState((prev) =>
+            prev.platform === state.platform ? prev : { ...prev, platform: state.platform }
+          );
+        }
+      },
+      onPlayerEvent: (event, payload) => {
+        if (event === 'POSITION_UPDATE') {
+          // Real player position from our own video tab — update local state
+          // only; the host's heartbeat interval broadcasts it to the room.
+          const t = payload.currentTime;
+          const playing = Boolean(payload.playing);
+          setPlaybackState((prev) => ({
+            ...prev,
+            currentTime: typeof t === 'number' ? t : prev.currentTime,
+            playing,
+            status: playing ? 'playing' : 'paused',
+            lastUpdated: new Date().toISOString(),
+            updatedBy: identity.userId,
+          }));
+          return;
+        }
+        // Local user action on the video (PLAY/PAUSE/SEEK/PLAYBACK_SPEED):
+        // broadcast to the room. The channel echoes it back (self: true) and
+        // the subscription handlers update local state from the echo.
+        channelRef.current?.broadcast(event, payload);
+      },
+    });
+    return disconnect;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ─── Host position heartbeat ────────────────────────────────────────────────
   useEffect(() => {
     if (role !== 'host' || connectionStatus !== 'connected') return;
@@ -303,10 +360,11 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
 
   // ─── Local playback ticker ──────────────────────────────────────────────────
   // Advances the local clock while playing so the position display moves between
-  // discrete events / heartbeats. Extension integration will later drive this
-  // from the real player, but the ticker keeps the UI live in the meantime.
+  // discrete events / heartbeats. When the extension is connected, the real
+  // player position drives the clock instead (via POSITION_UPDATE reports).
   useEffect(() => {
     if (!playbackState.playing || connectionStatus !== 'connected') return;
+    if (extensionState.status === 'connected') return;
     const interval = setInterval(() => {
       setPlaybackState((prev) =>
         prev.playing
@@ -319,7 +377,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, [playbackState.playing, playbackState.playbackRate, connectionStatus]);
+  }, [playbackState.playing, playbackState.playbackRate, connectionStatus, extensionState.status]);
 
   const broadcastEvent = useCallback((type: SyncEventType, payload: Record<string, unknown>) => {
     channelRef.current?.broadcast(type, payload);

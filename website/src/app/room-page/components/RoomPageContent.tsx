@@ -16,7 +16,7 @@ function RoomInner() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background overflow-hidden">
+    <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-background overflow-hidden">
       <RoomHeader />
       <RoomLayout />
     </div>

@@ -18,18 +18,27 @@ export default function RoomHeader() {
     router?.push('/');
   };
 
+  const dotStatus =
+    connectionStatus === 'connected'
+      ? 'connected'
+      : connectionStatus === 'connecting'
+        ? 'connecting'
+        : connectionStatus === 'error'
+          ? 'error'
+          : 'disconnected';
+
   return (
-    <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-card shrink-0">
+    <header className="flex items-center justify-between gap-2 px-3 sm:px-5 py-3 border-b border-border bg-card shrink-0">
       {/* Left: Logo + Room code */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
         <div className="flex items-center gap-2">
           <SyncLogo size={24} />
           <span className="text-sm font-semibold text-foreground hidden sm:block">SyncFlix</span>
         </div>
 
-        <div className="h-4 w-px bg-border" />
+        <div className="h-4 w-px bg-border shrink-0" />
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs text-muted-foreground font-medium">Room</span>
           <code className="font-mono text-sm font-semibold text-foreground tracking-widest bg-muted px-2 py-0.5 rounded-md">
             {room?.code ?? '------'}
@@ -38,17 +47,13 @@ export default function RoomHeader() {
         </div>
       </div>
       {/* Right: Status + Role + Leave */}
-      <div className="flex items-center gap-3">
-        <ConnectionDot
-          status={
-            connectionStatus === 'connected'
-              ? 'connected'
-              : connectionStatus === 'connecting'
-                ? 'connecting'
-                : 'disconnected'
-          }
-          showLabel
-        />
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <span className="hidden sm:inline-flex">
+          <ConnectionDot status={dotStatus} showLabel />
+        </span>
+        <span className="sm:hidden inline-flex">
+          <ConnectionDot status={dotStatus} />
+        </span>
 
         {currentUser && (
           <>

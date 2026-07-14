@@ -31,13 +31,13 @@ export default function ExtensionPanel() {
   const config = statusConfig?.[extensionState?.status];
 
   return (
-    <div className="px-5 pb-4 shrink-0">
+    <div className="px-4 sm:px-5 pb-4 shrink-0">
       <div
-        className={`flex items-center justify-between px-4 py-3 rounded-xl border ${config?.bg}`}
+        className={`flex items-center justify-between flex-wrap gap-2 px-4 py-3 rounded-xl border ${config?.bg}`}
       >
-        <div className="flex items-center gap-2.5">
-          <Puzzle size={14} className="text-muted-foreground" />
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Puzzle size={14} className="text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-2 min-w-0">
             {config?.icon}
             <span className={`text-xs font-semibold ${config?.labelClass}`}>{config?.label}</span>
           </div>

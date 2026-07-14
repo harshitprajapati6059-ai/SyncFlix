@@ -9,8 +9,8 @@ SyncFlix is a personal watch-party application that synchronizes playback betwee
 website/
 - Next.js application generated with Rocket.new
 
-extension/
-- Browser extension built with Claude Code
+website/extension/
+- Browser extension (Chrome MV3) built with Claude Code
 
 docs/
 - Project documentation

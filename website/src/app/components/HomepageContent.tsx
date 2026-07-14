@@ -138,10 +138,6 @@ export default function HomepageContent() {
         </p>
       </div>
 
-      {/* Footer */}
-      <footer className="pb-8 text-center">
-        <p className="text-xs text-muted-foreground">Built for personal use.</p>
-      </footer>
     </div>
   );
 }

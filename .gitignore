@@ -10,3 +10,5 @@ build/
 Thumbs.db
 
 .vscode/settings.json
+# IDE caches
+.vs/
