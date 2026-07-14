@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, Download } from 'lucide-react';
 import SyncLogo from '@/components/ui/SyncLogo';
 import CopyButton from '@/components/ui/CopyButton';
 import ConnectionDot from '@/components/ui/ConnectionDot';
@@ -54,6 +54,16 @@ export default function RoomHeader() {
         <span className="sm:hidden inline-flex">
           <ConnectionDot status={dotStatus} />
         </span>
+
+        <a
+          href="/downloads/syncflix-extension.zip"
+          download
+          className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+          title="Download the SyncFlix browser extension (load unpacked in chrome://extensions)"
+        >
+          <Download size={13} />
+          <span className="hidden sm:inline">Extension</span>
+        </a>
 
         {currentUser && (
           <>
