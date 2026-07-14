@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "SyncFlix",
+  "version": "0.1.0",
+  "description": "Synchronizes video playback with your SyncFlix watch-party room.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:4028/*", "https://*.netlify.app/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.youtube.com/*"],
+      "js": ["player.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SyncFlix"
+  },
+  "permissions": ["storage"]
+}
