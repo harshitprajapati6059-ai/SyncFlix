@@ -27,11 +27,18 @@
       .row span:last-child {
         color: #e5e5ea;
       }
-      #status.connected {
+      .connected {
         color: #4ade80;
       }
-      #status.waiting {
+      .waiting {
         color: #facc15;
+      }
+      a {
+        color: #60a5fa;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
@@ -39,7 +46,12 @@
     <h1>SyncFlix</h1>
     <div class="row"><span>Status</span><span id="status">…</span></div>
     <div class="row"><span>Platform</span><span id="platform">—</span></div>
+    <div class="row"><span>Room tab</span><span id="roomTabs">—</span></div>
+    <div class="row"><span>Video tab</span><span id="playerTabs">—</span></div>
     <div class="row"><span>Version</span><span id="version">—</span></div>
+    <div class="row" id="openVideoRow" style="display: none">
+      <span>Host's video</span><a id="openVideo" href="#">Open video</a>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>

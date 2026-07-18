@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Play, Pause, Clock, Gauge, Wifi } from 'lucide-react';
+import { Play, Pause, Clock, Gauge, Wifi, ExternalLink, AlertTriangle } from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
 import SyncStatusBadge from '@/components/ui/SyncStatusBadge';
 import { formatPlaybackTime, relativeTime } from '@/utils/time';
 
 export default function PlaybackPanel() {
-  const { playbackState, syncState, room } = useRoom();
+  const { playbackState, syncState, room, hostVideo, videoMismatch } = useRoom();
 
   const totalMockDuration = 5400; // 1h30m for display
   const progressPct = Math.min(100, (playbackState?.currentTime / totalMockDuration) * 100);
@@ -26,6 +26,27 @@ export default function PlaybackPanel() {
           showDetail
         />
       </div>
+      {/* Different-video warning: sync is suspended until the viewer opens the
+          host's video, so make the one-click fix impossible to miss. */}
+      {videoMismatch && (
+        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 rounded-xl border bg-[var(--status-warning-bg)] border-[var(--status-warning)]/20">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[var(--status-warning)]">
+            <AlertTriangle size={14} className="shrink-0" />
+            You&apos;re watching a different video than the host — sync is paused
+          </div>
+          {hostVideo?.videoUrl && (
+            <a
+              href={hostVideo.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline shrink-0"
+            >
+              <ExternalLink size={12} />
+              Open host&apos;s video
+            </a>
+          )}
+        </div>
+      )}
       {/* Playback status card */}
       <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5">
         {/* Platform + Status row */}
@@ -34,11 +55,22 @@ export default function PlaybackPanel() {
             <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
               <Wifi size={15} className="text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-muted-foreground font-medium">Platform</p>
               <p className="text-sm font-semibold text-foreground">
                 {playbackState?.platform ?? 'Not connected'}
               </p>
+              {hostVideo?.videoUrl && (
+                <a
+                  href={hostVideo.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline truncate max-w-full"
+                >
+                  <ExternalLink size={11} className="shrink-0" />
+                  Open host&apos;s video
+                </a>
+              )}
             </div>
           </div>
 

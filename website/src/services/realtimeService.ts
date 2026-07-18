@@ -122,7 +122,9 @@ export function createRealtimeChannel(roomCode: string, user: ChannelUser): Real
         joinedAt: p.joinedAt,
         lastSeen: now,
       }))
-      .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+      // joinedAt first; userId tiebreak so every client derives the same order
+      // (host election picks the first entry — it must be deterministic).
+      .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt) || a.userId.localeCompare(b.userId));
     presenceHandler(users);
   };
 

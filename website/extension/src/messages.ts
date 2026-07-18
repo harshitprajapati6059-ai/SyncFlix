@@ -39,6 +39,16 @@ export interface ExtensionStatePayload {
   status: 'connected' | 'waiting';
   platform: string | null;
   version: string;
+  /** SyncFlix room tabs currently bridged. Diagnostic only — the popup shows it. */
+  roomTabs: number;
+  /** Player tabs the worker can route to. 0 means sync events have nowhere to go. */
+  playerTabs: number;
+  /** Identity of the video in the active player tab (null when none attached). */
+  videoId: string | null;
+  videoUrl: string | null;
+  /** The room host's video URL, reported down by the page. Drives the popup's
+   *  "Open video" link so a mismatched machine can jump to the right video. */
+  hostVideoUrl: string | null;
 }
 
 // ─── window.postMessage envelopes ───────────────────────────────────────────
@@ -46,7 +56,7 @@ export interface ExtensionStatePayload {
 export interface WindowEnvelope {
   source: typeof PAGE_SOURCE | typeof EXT_SOURCE;
   v: number;
-  type: 'EXTENSION_PING' | 'EXTENSION_HELLO' | 'EXTENSION_STATE' | 'SYNC_EVENT';
+  type: 'EXTENSION_PING' | 'EXTENSION_HELLO' | 'EXTENSION_STATE' | 'SYNC_EVENT' | 'HOST_VIDEO';
   payload?: unknown;
 }
 
@@ -55,9 +65,14 @@ export interface WindowEnvelope {
 export type PortMessage =
   | { type: 'GET_STATE' }
   | { type: 'EXTENSION_STATE'; payload: ExtensionStatePayload }
-  | { type: 'ADAPTER_ATTACHED'; payload: { platform: string } }
+  | {
+      type: 'ADAPTER_ATTACHED';
+      payload: { platform: string; videoId: string | null; videoUrl: string | null };
+    }
   | { type: 'ADAPTER_LOST' }
-  | { type: 'SYNC_EVENT'; payload: SyncEventEnvelope };
+  | { type: 'SYNC_EVENT'; payload: SyncEventEnvelope }
+  /** Page → worker: the room host's current video URL (for the popup link). */
+  | { type: 'HOST_VIDEO'; payload: { url: string | null } };
 
 /** Port names, so the service worker knows which kind of tab connected. */
 export const BRIDGE_PORT = 'bridge';

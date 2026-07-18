@@ -32,13 +32,18 @@ import type {
   PlaybackState,
   SyncState,
   ExtensionState,
+  HostVideo,
   SyncEvent,
   ChatMessage,
   SyncEventType,
   UserRole,
 } from '@/types/room';
 import { createRealtimeChannel, type RealtimeChannel } from '@/services/realtimeService';
-import { connectExtensionBridge, sendSyncEventToExtension } from '@/services/extensionBridge';
+import {
+  connectExtensionBridge,
+  sendSyncEventToExtension,
+  sendHostVideoToExtension,
+} from '@/services/extensionBridge';
 import { getSessionIdentity } from '@/utils/session';
 
 interface RoomContextValue extends RoomContextState {
@@ -84,11 +89,25 @@ const INITIAL_SYNC: SyncState = {
   lastChecked: new Date().toISOString(),
 };
 
+// Starts 'disconnected' (= not installed). The bridge flips this to 'waiting'
+// on EXTENSION_HELLO, then to 'connected' once a video tab attaches. Keeping the
+// initial state as 'waiting' made a missing extension indistinguishable from an
+// installed one with no video open.
 const INITIAL_EXTENSION: ExtensionState = {
-  status: 'waiting',
+  status: 'disconnected',
   platform: null,
   version: null,
+  videoId: null,
+  videoUrl: null,
 };
+
+const INITIAL_HOST_VIDEO: HostVideo = { videoId: null, videoUrl: null };
+
+// Monotonic id source for event-log entries and chat messages. The previous
+// ids were derived from list length, which repeats once the log is capped —
+// duplicate React keys made entries render unreliably.
+let seq = 0;
+const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
 export function RoomProvider({ children, roomCode, isHost = false }: RoomProviderProps) {
   const code = roomCode ?? '------';
@@ -110,20 +129,46 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   const [playbackState, setPlaybackState] = useState<PlaybackState>(INITIAL_PLAYBACK);
   const [syncState, setSyncState] = useState<SyncState>(INITIAL_SYNC);
   const [extensionState, setExtensionState] = useState<ExtensionState>(INITIAL_EXTENSION);
+  const [hostVideo, setHostVideo] = useState<HostVideo>(INITIAL_HOST_VIDEO);
   const [connectionStatus, setConnectionStatus] =
     useState<RoomContextState['connectionStatus']>('connecting');
   const [events, setEvents] = useState<SyncEvent[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
+  // ─── Host election ─────────────────────────────────────────────────────────
+  // The host is derived from presence, not from the URL: the roster is sorted
+  // by joinedAt, so the earliest member is host. The creator joined first and
+  // is therefore host; when they leave, the first joiner inherits the role.
+  // (The url/session role is only a display hint until presence first syncs —
+  // trusting it allowed anyone pasting the host's URL to become a second host,
+  // and two heartbeating hosts yank each other's playback around.)
+  const hostId = users[0]?.userId ?? null;
+  const amHost = hostId !== null ? hostId === identity.userId : role === 'host';
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   // Latest local playback time, so the host can heartbeat without stale closures.
   const playbackRef = useRef<PlaybackState>(INITIAL_PLAYBACK);
   playbackRef.current = playbackState;
+  // Refs mirroring state the channel handlers need (they're bound once per
+  // channel and would otherwise close over stale values).
+  const hostIdRef = useRef<string | null>(null);
+  hostIdRef.current = hostId;
+  const extensionRef = useRef<ExtensionState>(INITIAL_EXTENSION);
+  extensionRef.current = extensionState;
+
+  // True when our player tab is on a different video than the host's.
+  const videoMismatch =
+    !amHost &&
+    hostVideo.videoId !== null &&
+    extensionState.videoId !== null &&
+    hostVideo.videoId !== extensionState.videoId;
+  const mismatchRef = useRef(false);
+  mismatchRef.current = videoMismatch;
 
   const currentUser: PresenceUser | null = users.find((u) => u.userId === identity.userId) ?? {
     userId: identity.userId,
     username: identity.username,
-    role,
+    role: amHost ? 'host' : 'viewer',
     connected: connectionStatus === 'connected',
     joinedAt: room.createdAt,
     lastSeen: new Date().toISOString(),
@@ -135,7 +180,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       setEvents((prev) =>
         [
           {
-            id: `evt-${type}-${userId}-${prev.length}`,
+            id: nextId('evt'),
             type,
             userId,
             username,
@@ -175,7 +220,12 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     });
 
     channel.onPresenceChange((roster) => {
-      setUsers(roster);
+      // Election: first in the (joinedAt-sorted) roster is host. Displayed
+      // roles are derived from that, not from what each client claims.
+      const electedHost = roster[0]?.userId ?? null;
+      setUsers(
+        roster.map((u) => ({ ...u, role: u.userId === electedHost ? 'host' : 'viewer' }))
+      );
     });
 
     // Apply an incoming playback state from a peer (host-authoritative).
@@ -188,6 +238,27 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       }));
     };
 
+    // Forward a remote event to the extension only when it was recorded on the
+    // same video our player tab is showing. Applying another video's timeline
+    // is what caused e.g. "their video ended → ours seeked to 0:00".
+    const forwardToExtension = (event: SyncEventType, payload: Record<string, unknown>) => {
+      const remoteVid = typeof payload.videoId === 'string' ? payload.videoId : null;
+      const localVid = extensionRef.current.videoId;
+      if (remoteVid && localVid && remoteVid !== localVid) return;
+      sendSyncEventToExtension(event, payload);
+    };
+
+    // Track which video the host is on, learned from their stamped events.
+    const noteHostVideo = (userId: string, payload: Record<string, unknown>) => {
+      if (userId !== hostIdRef.current || userId === identity.userId) return;
+      const videoId = typeof payload.videoId === 'string' ? payload.videoId : null;
+      const videoUrl = typeof payload.videoUrl === 'string' ? payload.videoUrl : null;
+      if (!videoId && !videoUrl) return;
+      setHostVideo((prev) =>
+        prev.videoId === videoId && prev.videoUrl === videoUrl ? prev : { videoId, videoUrl }
+      );
+    };
+
     channel.subscribe('PLAY', (payload, userId, username) => {
       applyPlayback(
         {
@@ -198,7 +269,8 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         },
         userId
       );
-      if (userId !== identity.userId) sendSyncEventToExtension('PLAY', payload);
+      noteHostVideo(userId, payload);
+      if (userId !== identity.userId) forwardToExtension('PLAY', payload);
       logEvent('PLAY', userId, username, payload);
     });
 
@@ -211,7 +283,8 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         },
         userId
       );
-      if (userId !== identity.userId) sendSyncEventToExtension('PAUSE', payload);
+      noteHostVideo(userId, payload);
+      if (userId !== identity.userId) forwardToExtension('PAUSE', payload);
       logEvent('PAUSE', userId, username, payload);
     });
 
@@ -220,7 +293,8 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         { currentTime: typeof payload.to === 'number' ? payload.to : undefined },
         userId
       );
-      if (userId !== identity.userId) sendSyncEventToExtension('SEEK', payload);
+      noteHostVideo(userId, payload);
+      if (userId !== identity.userId) forwardToExtension('SEEK', payload);
       logEvent('SEEK', userId, username, payload);
     });
 
@@ -229,7 +303,8 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         { playbackRate: typeof payload.rate === 'number' ? payload.rate : undefined },
         userId
       );
-      if (userId !== identity.userId) sendSyncEventToExtension('PLAYBACK_SPEED', payload);
+      noteHostVideo(userId, payload);
+      if (userId !== identity.userId) forwardToExtension('PLAYBACK_SPEED', payload);
       logEvent('PLAYBACK_SPEED', userId, username, payload);
     });
 
@@ -241,12 +316,16 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     // Position heartbeat from the host: viewers snap to it and measure drift.
     channel.subscribe('POSITION_UPDATE', (payload, userId) => {
       if (userId === identity.userId) return; // ignore our own heartbeat echo
+      // Only the elected host's heartbeat is authoritative — a stale tab that
+      // still believes it's host must not fight over our playback.
+      if (hostIdRef.current !== null && userId !== hostIdRef.current) return;
+      noteHostVideo(userId, payload);
       const hostTime = typeof payload.currentTime === 'number' ? payload.currentTime : null;
       const hostPlaying = Boolean(payload.playing);
       if (hostTime === null) return;
 
       // Let the extension's sync engine correct the real video against the host.
-      sendSyncEventToExtension('POSITION_UPDATE', payload);
+      forwardToExtension('POSITION_UPDATE', payload);
 
       setPlaybackState((prev) => {
         const drift = prev.currentTime - hostTime;
@@ -288,7 +367,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       setChatMessages((prev) => [
         ...prev,
         {
-          id: `msg-${userId}-${prev.length}`,
+          id: nextId('msg'),
           userId,
           username,
           message: text,
@@ -320,6 +399,10 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         }
       },
       onPlayerEvent: (event, payload) => {
+        // While our player tab is on a different video than the host, its
+        // events describe content the room isn't watching — neither our local
+        // room display nor the other participants should receive them.
+        if (mismatchRef.current) return;
         if (event === 'POSITION_UPDATE') {
           // Real player position from our own video tab — update local state
           // only; the host's heartbeat interval broadcasts it to the room.
@@ -345,18 +428,47 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Host position heartbeat ────────────────────────────────────────────────
+  // ─── Host video bookkeeping ─────────────────────────────────────────────────
+  // When we are the host, our own player tab defines the room's video.
+  // (Viewers learn it from the stamped heartbeat instead.)
   useEffect(() => {
-    if (role !== 'host' || connectionStatus !== 'connected') return;
+    if (!amHost) return;
+    setHostVideo((prev) =>
+      prev.videoId === extensionState.videoId && prev.videoUrl === extensionState.videoUrl
+        ? prev
+        : { videoId: extensionState.videoId, videoUrl: extensionState.videoUrl }
+    );
+  }, [amHost, extensionState.videoId, extensionState.videoUrl]);
+
+  // Report the host's video URL down to the extension so its popup can offer
+  // an "Open video" link. Re-sent on every extension state message — the MV3
+  // worker forgets it when suspended, and this keeps it re-taught for free.
+  useEffect(() => {
+    if (extensionState.status === 'disconnected') return; // no bridge to talk to
+    sendHostVideoToExtension(hostVideo.videoUrl);
+  }, [hostVideo.videoUrl, extensionState]);
+
+  // ─── Host position heartbeat ────────────────────────────────────────────────
+  // Runs on the *elected* host (derived from presence), not the URL role. The
+  // heartbeat is stamped with the host's video identity so viewers on another
+  // video can refuse it and show a "watch the same video" link instead.
+  useEffect(() => {
+    // hostId === null means presence hasn't synced yet — during that window
+    // amHost falls back to the URL role hint, which must never be enough to
+    // start heartbeating (anyone can paste a &role=host URL).
+    if (hostId === null || !amHost || connectionStatus !== 'connected') return;
     const interval = setInterval(() => {
       const pb = playbackRef.current;
+      const ext = extensionRef.current;
       channelRef.current?.broadcast('POSITION_UPDATE', {
         currentTime: pb.currentTime,
         playing: pb.playing,
+        videoId: ext.videoId,
+        videoUrl: ext.videoUrl,
       });
     }, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [role, connectionStatus]);
+  }, [hostId, amHost, connectionStatus]);
 
   // ─── Local playback ticker ──────────────────────────────────────────────────
   // Advances the local clock while playing so the position display moves between
@@ -391,7 +503,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       setChatMessages((prev) => [
         ...prev,
         {
-          id: `msg-self-${prev.length}`,
+          id: nextId('msg'),
           userId: identity.userId,
           username: identity.username,
           message: trimmed,
@@ -427,6 +539,8 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     connectionStatus,
     events,
     chatMessages,
+    hostVideo,
+    videoMismatch,
     sendChatMessage,
     copyRoomCode,
     leaveRoom,

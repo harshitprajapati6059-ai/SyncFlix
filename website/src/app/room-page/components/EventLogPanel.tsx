@@ -57,9 +57,9 @@ export default function EventLogPanel() {
                   </div>
 
                   {/* Payload preview */}
-                  {Object.keys(evt?.payload)?.length > 0 && (
+                  {Object.keys(evt?.payload ?? {}).length > 0 && (
                     <p className="text-[10px] font-mono-data text-muted-foreground mt-0.5 truncate">
-                      {Object.entries(evt?.payload)
+                      {Object.entries(evt?.payload ?? {})
                         ?.slice(0, 2)
                         ?.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
                         ?.join(' ')}

@@ -24,7 +24,7 @@ const PING_INTERVAL_MS = 2000;
 interface WindowEnvelope {
   source: string;
   v: number;
-  type: 'EXTENSION_PING' | 'EXTENSION_HELLO' | 'EXTENSION_STATE' | 'SYNC_EVENT';
+  type: 'EXTENSION_PING' | 'EXTENSION_HELLO' | 'EXTENSION_STATE' | 'SYNC_EVENT' | 'HOST_VIDEO';
   payload?: unknown;
 }
 
@@ -40,6 +40,11 @@ export function sendSyncEventToExtension(
   payload: Record<string, unknown>
 ): void {
   post('SYNC_EVENT', { event, payload });
+}
+
+/** Report the room host's video URL so the popup can offer an "Open video" link. */
+export function sendHostVideoToExtension(url: string | null): void {
+  post('HOST_VIDEO', { url });
 }
 
 export interface ExtensionBridgeHandlers {
@@ -66,17 +71,27 @@ export function connectExtensionBridge(handlers: ExtensionBridgeHandlers): () =>
     if (data.type === 'EXTENSION_HELLO') {
       helloReceived = true;
       const { version } = (data.payload ?? {}) as { version?: string };
-      handlers.onStateChange({ status: 'waiting', platform: null, version: version ?? null });
+      handlers.onStateChange({
+        status: 'waiting',
+        platform: null,
+        version: version ?? null,
+        videoId: null,
+        videoUrl: null,
+      });
     } else if (data.type === 'EXTENSION_STATE') {
       const state = (data.payload ?? {}) as {
         status?: 'connected' | 'waiting';
         platform?: string | null;
         version?: string;
+        videoId?: string | null;
+        videoUrl?: string | null;
       };
       handlers.onStateChange({
         status: state.status ?? 'waiting',
         platform: state.platform ?? null,
         version: state.version || null,
+        videoId: state.videoId ?? null,
+        videoUrl: state.videoUrl ?? null,
       });
     } else if (data.type === 'SYNC_EVENT') {
       const { event: syncEvent, payload } = (data.payload ?? {}) as {

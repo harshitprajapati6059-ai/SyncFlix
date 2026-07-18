@@ -64,7 +64,12 @@ function connect(): void {
 }
 
 function sendSync(event: SyncEventType, payload: Record<string, unknown>): void {
-  const envelope: SyncEventEnvelope = { event, payload };
+  // Every event carries the identity of the video it happened on, so peers on a
+  // different video (or none) can refuse to apply it instead of desyncing.
+  const envelope: SyncEventEnvelope = {
+    event,
+    payload: { ...payload, videoId: currentVideo.videoId, videoUrl: currentVideo.videoUrl },
+  };
   port?.postMessage({ type: 'SYNC_EVENT', payload: envelope } satisfies PortMessage);
 }
 
@@ -72,7 +77,11 @@ function announceAttachment(): void {
   if (video) {
     port?.postMessage({
       type: 'ADAPTER_ATTACHED',
-      payload: { platform: adapter.platform },
+      payload: {
+        platform: adapter.platform,
+        videoId: currentVideo.videoId,
+        videoUrl: currentVideo.videoUrl,
+      },
     } satisfies PortMessage);
   } else {
     port?.postMessage({ type: 'ADAPTER_LOST' } satisfies PortMessage);
@@ -120,6 +129,18 @@ function endNudge(v: HTMLVideoElement): void {
 
 function applyRemote({ event, payload }: SyncEventEnvelope): void {
   if (!video) return;
+  // Video-identity gate: a remote event stamped with a different videoId was
+  // recorded on different content — applying its timeline here would corrupt
+  // playback (e.g. the sender's video ending would seek ours to 0:00). Events
+  // without a stamp (older peers) are allowed through.
+  const remoteVideoId = payload.videoId;
+  if (
+    typeof remoteVideoId === 'string' &&
+    currentVideo.videoId !== null &&
+    remoteVideoId !== currentVideo.videoId
+  ) {
+    return;
+  }
   const v = video;
 
   switch (event) {
@@ -251,6 +272,7 @@ function onTimeUpdate(): void {
 // ─── Video attach / detach ───────────────────────────────────────────────────
 
 let video: HTMLVideoElement | null = null;
+let currentVideo: ReturnType<typeof adapter.getVideoInfo> = { videoId: null, videoUrl: null };
 
 function attach(v: HTMLVideoElement): void {
   v.addEventListener('play', onPlay);
@@ -271,13 +293,25 @@ function detach(v: HTMLVideoElement): void {
   v.removeEventListener('timeupdate', onTimeUpdate);
 }
 
-/** Re-locate the video; YouTube may replace the element on SPA navigation. */
+/**
+ * Re-locate the video and re-read its identity. YouTube may replace the
+ * element on SPA navigation — or keep the same element but load a different
+ * video (autoplay/next), which must also trigger a re-announce so peers stop
+ * applying our old-video timeline.
+ */
 function checkVideo(): void {
   const found = adapter.findVideo();
-  if (found === video) return;
-  if (video) detach(video);
-  video = found;
-  if (video) attach(video);
+  const info = adapter.getVideoInfo();
+  const elementChanged = found !== video;
+  const videoChanged = info.videoId !== currentVideo.videoId;
+  if (!elementChanged && !videoChanged) return;
+
+  if (elementChanged) {
+    if (video) detach(video);
+    video = found;
+    if (video) attach(video);
+  }
+  currentVideo = info;
   announceAttachment();
 }
 

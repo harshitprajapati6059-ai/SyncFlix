@@ -61,6 +61,15 @@ export interface ExtensionState {
   status: ExtensionStatus;
   platform: string | null;
   version: string | null;
+  /** Identity of the video open in this machine's player tab (from the extension). */
+  videoId: string | null;
+  videoUrl: string | null;
+}
+
+/** The video the room host is currently watching, as learned from their events. */
+export interface HostVideo {
+  videoId: string | null;
+  videoUrl: string | null;
 }
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
@@ -165,4 +174,8 @@ export interface RoomContextState {
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
   events: SyncEvent[];
   chatMessages: ChatMessage[];
+  /** The video the host is watching, for the "open the same video" link. */
+  hostVideo: HostVideo;
+  /** True when our player tab is on a different video than the host. */
+  videoMismatch: boolean;
 }

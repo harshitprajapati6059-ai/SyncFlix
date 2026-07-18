@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -13,13 +13,18 @@ interface CopyButtonProps {
 
 export default function CopyButton({ value, label, size = 14, className = '' }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<number | undefined>(undefined);
+
+  // Clear the pending reset if we unmount inside the 2s "copied" window.
+  useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
       toast.success(label ? `${label} copied` : 'Copied to clipboard');
-      setTimeout(() => setCopied(false), 2000);
+      window.clearTimeout(resetTimer.current);
+      resetTimer.current = window.setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error('Failed to copy — please copy manually');
     }

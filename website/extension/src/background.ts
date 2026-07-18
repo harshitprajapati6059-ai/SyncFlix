@@ -18,9 +18,20 @@ import {
   type PortMessage,
 } from './messages';
 
+interface PlayerEntry {
+  port: chrome.runtime.Port;
+  platform: string | null;
+  videoId: string | null;
+  videoUrl: string | null;
+}
+
 const bridgePorts = new Map<number, chrome.runtime.Port>(); // tabId → port
-const playerPorts = new Map<number, { port: chrome.runtime.Port; platform: string | null }>();
+const playerPorts = new Map<number, PlayerEntry>();
 let activePlayerTab: number | null = null;
+// The room host's video URL, reported down by a bridge tab. In-memory like the
+// rest — the page re-sends it on every extension-state change, so a revived
+// worker re-learns it within one state round-trip.
+let hostVideoUrl: string | null = null;
 
 function currentState(): ExtensionStatePayload {
   const active = activePlayerTab !== null ? playerPorts.get(activePlayerTab) : undefined;
@@ -28,6 +39,11 @@ function currentState(): ExtensionStatePayload {
     status: active?.platform ? 'connected' : 'waiting',
     platform: active?.platform ?? null,
     version: chrome.runtime.getManifest().version,
+    roomTabs: bridgePorts.size,
+    playerTabs: playerPorts.size,
+    videoId: active?.videoId ?? null,
+    videoUrl: active?.videoUrl ?? null,
+    hostVideoUrl,
   };
 }
 
@@ -56,7 +72,20 @@ chrome.runtime.onConnect.addListener((port) => {
         port.postMessage({ type: 'EXTENSION_STATE', payload: currentState() } satisfies PortMessage);
       } else if (msg.type === 'SYNC_EVENT') {
         const target = activePlayerTab !== null ? playerPorts.get(activePlayerTab) : undefined;
-        target?.port.postMessage(msg);
+        if (!target) {
+          // No attached video tab — the event has nowhere to go. This used to be
+          // a silent drop, which is indistinguishable from "sync is broken" when
+          // debugging a second machine. Tell the page so the UI can say so.
+          console.warn('[SyncFlix] dropped %s: no attached player tab', msg.payload.event);
+          port.postMessage({ type: 'EXTENSION_STATE', payload: currentState() } satisfies PortMessage);
+          return;
+        }
+        target.port.postMessage(msg);
+      } else if (msg.type === 'HOST_VIDEO') {
+        if (hostVideoUrl !== msg.payload.url) {
+          hostVideoUrl = msg.payload.url;
+          broadcastStateToBridges();
+        }
       }
     });
 
@@ -67,7 +96,7 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 
   if (port.name === PLAYER_PORT) {
-    playerPorts.set(tabId, { port, platform: null });
+    playerPorts.set(tabId, { port, platform: null, videoId: null, videoUrl: null });
 
     port.onMessage.addListener((msg: PortMessage) => {
       const entry = playerPorts.get(tabId);
@@ -75,10 +104,14 @@ chrome.runtime.onConnect.addListener((port) => {
 
       if (msg.type === 'ADAPTER_ATTACHED') {
         entry.platform = msg.payload.platform;
+        entry.videoId = msg.payload.videoId;
+        entry.videoUrl = msg.payload.videoUrl;
         activePlayerTab = tabId; // most recent attach wins
         broadcastStateToBridges();
       } else if (msg.type === 'ADAPTER_LOST') {
         entry.platform = null;
+        entry.videoId = null;
+        entry.videoUrl = null;
         if (activePlayerTab === tabId) activePlayerTab = pickAttachedPlayerTab();
         broadcastStateToBridges();
       } else if (msg.type === 'SYNC_EVENT') {

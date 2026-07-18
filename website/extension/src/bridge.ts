@@ -70,6 +70,9 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
   } else if (data.type === 'SYNC_EVENT') {
     port?.postMessage({ type: 'SYNC_EVENT', payload: data.payload } as PortMessage);
+  } else if (data.type === 'HOST_VIDEO') {
+    const { url } = (data.payload ?? {}) as { url?: string | null };
+    port?.postMessage({ type: 'HOST_VIDEO', payload: { url: url ?? null } } satisfies PortMessage);
   }
 });
 

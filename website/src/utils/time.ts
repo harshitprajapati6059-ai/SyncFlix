@@ -34,14 +34,16 @@ export function formatDrift(drift: number): string {
 }
 
 /**
- * Formats an ISO timestamp into a short time string HH:MM:SS.
- * Locale-independent — uses manual extraction.
+ * Formats an ISO timestamp into a short time string HH:MM:SS in the viewer's
+ * local time zone. Only used for client-rendered values (chat, event log), so
+ * there is no SSR hydration concern; UTC getters here made every displayed
+ * time wrong by the viewer's UTC offset.
  */
 export function formatTimestamp(iso: string): string {
   const d = new Date(iso);
-  const h = String(d.getUTCHours()).padStart(2, '0');
-  const m = String(d.getUTCMinutes()).padStart(2, '0');
-  const s = String(d.getUTCSeconds()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
   return `${h}:${m}:${s}`;
 }
 
