@@ -3,55 +3,247 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: rgba(255, 255, 255, 0.04);
+        --line: rgba(255, 255, 255, 0.08);
+        --text: #e7e7ec;
+        --dim: #8b8b96;
+        --primary: #6ee7b7;
+        --accent: #38bdf8;
+        --warn: #facc15;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family: system-ui, sans-serif;
-        background: #0f0f13;
-        color: #e5e5ea;
+        font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        background-image: radial-gradient(
+          120% 60% at 50% -10%,
+          rgba(110, 231, 183, 0.08),
+          transparent 60%
+        );
+        color: var(--text);
         margin: 0;
-        min-width: 220px;
-        padding: 14px 16px;
+        inline-size: 264px;
+        padding: 14px 14px 12px;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
       }
-      h1 {
-        font-size: 13px;
-        margin: 0 0 10px;
-        letter-spacing: 0.04em;
-      }
-      .row {
+
+      /* ── Header ──────────────────────────────────────── */
+      .head {
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        font-size: 12px;
-        padding: 3px 0;
-        color: #a1a1aa;
+        margin-block-end: 12px;
       }
-      .row span:last-child {
-        color: #e5e5ea;
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
-      .connected {
-        color: #4ade80;
+      .mark {
+        inline-size: 22px;
+        block-size: 22px;
+        display: block;
       }
-      .waiting {
-        color: #facc15;
+      .wordmark {
+        font-size: 13.5px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--text);
       }
-      a {
-        color: #60a5fa;
+      .chip {
+        font-size: 10px;
+        color: var(--dim);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ── Status card ─────────────────────────────────── */
+      .status-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 11px 12px;
+        margin-block-end: 8px;
+      }
+      .dot {
+        position: relative;
+        inline-size: 8px;
+        block-size: 8px;
+        border-radius: 50%;
+        background: var(--warn);
+        flex: none;
+      }
+      .dot::after {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 1px solid currentColor;
+        color: var(--warn);
+        opacity: 0;
+        animation: ping 2.2s ease-out infinite;
+      }
+      @keyframes ping {
+        0% {
+          transform: scale(0.4);
+          opacity: 0.9;
+        }
+        70%,
+        100% {
+          transform: scale(1.5);
+          opacity: 0;
+        }
+      }
+      .status-label {
+        font-size: 12.5px;
+        font-weight: 600;
+        line-height: 1.25;
+        text-transform: capitalize;
+      }
+      .status-sub {
+        font-size: 10.5px;
+        color: var(--dim);
+        line-height: 1.35;
+      }
+      .status-card.connected .dot,
+      .status-card.connected .dot::after {
+        background: var(--primary);
+        color: var(--primary);
+      }
+      .status-card.connected .dot::after {
+        background: transparent;
+      }
+      .status-card.connected .status-label {
+        color: var(--primary);
+      }
+
+      /* ── Connection chain ────────────────────────────── */
+      .chain {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        margin-block-end: 8px;
+      }
+      .node {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 11px;
+      }
+      .node-label {
+        display: block;
+        font-size: 9.5px;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-block-end: 3px;
+      }
+      .node-value {
+        display: block;
+        font-size: 11.5px;
+        font-weight: 550;
+        font-variant-numeric: tabular-nums;
+      }
+      .node-value.connected {
+        color: var(--primary);
+      }
+      .node-value.waiting {
+        color: var(--warn);
+      }
+      .link-line {
+        inline-size: 16px;
+        flex: none;
+        align-self: center;
+        block-size: 1px;
+        background: var(--line);
+      }
+
+      /* ── Open video ──────────────────────────────────── */
+      #openVideoRow {
+        margin-block-end: 8px;
+      }
+      .open-btn {
+        display: block;
+        text-align: center;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--bg);
+        background: linear-gradient(100deg, var(--primary), var(--accent));
+        border-radius: 10px;
+        padding: 8px 12px;
         text-decoration: none;
       }
-      a:hover {
-        text-decoration: underline;
+      .open-btn:hover {
+        filter: brightness(1.08);
+      }
+
+      .foot {
+        font-size: 9.5px;
+        color: var(--dim);
+        text-align: center;
+        letter-spacing: 0.04em;
       }
     </style>
   </head>
   <body>
-    <h1>SyncFlix</h1>
-    <div class="row"><span>Status</span><span id="status">…</span></div>
-    <div class="row"><span>Platform</span><span id="platform">—</span></div>
-    <div class="row"><span>Room tab</span><span id="roomTabs">—</span></div>
-    <div class="row"><span>Video tab</span><span id="playerTabs">—</span></div>
-    <div class="row"><span>Version</span><span id="version">—</span></div>
-    <div class="row" id="openVideoRow" style="display: none">
-      <span>Host's video</span><a id="openVideo" href="#">Open video</a>
+    <header class="head anim">
+      <div class="brand">
+        <!-- Same mark as the website's SyncLogo component: two offset play
+             triangles + sync arc. Keep the two in step. -->
+        <svg class="mark" viewBox="0 0 40 40" fill="none" aria-label="SyncFlix logo" role="img">
+          <polygon points="4,8 4,32 22,20" fill="var(--primary)" />
+          <polygon points="14,8 14,32 32,20" fill="var(--primary)" opacity="0.35" />
+          <path
+            d="M22 20 Q27 17 32 20"
+            stroke="var(--primary)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            fill="none"
+            opacity="0.6"
+          />
+        </svg>
+        <span class="wordmark">SyncFlix</span>
+      </div>
+      <span class="chip">v<span id="version">—</span></span>
+    </header>
+
+    <section class="status-card anim" id="statusCard">
+      <span class="dot"></span>
+      <div>
+        <div class="status-label" id="status">…</div>
+        <div class="status-sub">Platform&ensp;·&ensp;<span id="platform">—</span></div>
+      </div>
+    </section>
+
+    <section class="chain anim">
+      <div class="node">
+        <span class="node-label">Room tab</span>
+        <span class="node-value" id="roomTabs">—</span>
+      </div>
+      <div class="link-line"></div>
+      <div class="node">
+        <span class="node-label">Video tab</span>
+        <span class="node-value" id="playerTabs">—</span>
+      </div>
+    </section>
+
+    <div class="anim" id="openVideoRow" style="display: none">
+      <a class="open-btn" id="openVideo" href="#">Open host’s video</a>
     </div>
+
+    <div class="foot anim">Controlled from your SyncFlix room</div>
+
     <script src="popup.js"></script>
   </body>
 </html>

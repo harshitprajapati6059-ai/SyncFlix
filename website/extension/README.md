@@ -22,20 +22,22 @@ npm run watch     # rebuild on change
 
 1. Run the website (`npm run dev` in `website/`) and create a room.
    The Extension panel should switch from *waiting* to *connected* once a
-   YouTube video tab is open.
-2. Open the same YouTube video in a second browser/profile, join the room
+   YouTube or Netflix video tab is open.
+2. Open the same video in a second browser/profile, join the room
    as a viewer (extension installed there too).
 3. Play/pause/seek on either side — the other side follows. The host's
    position heartbeat corrects viewer drift automatically.
 
 After editing extension code: rebuild, then click the reload icon on the
-extension card in `chrome://extensions`, and reload the SyncFlix + YouTube tabs.
+extension card in `chrome://extensions`, and reload the SyncFlix + video tabs.
 
 ## Layout
 
 - `src/messages.ts` — message protocol (mirrored by `../src/services/extensionBridge.ts`)
 - `src/background.ts` — service worker: routes messages between tabs
 - `src/bridge.ts` — content script on the SyncFlix site (page ⇄ worker relay)
-- `src/player.ts` — content script on YouTube: sync engine (echo suppression, drift correction)
-- `src/adapters/` — one `PlatformAdapter` per streaming platform (v1: YouTube)
+- `src/player.ts` — content script on the video site: sync engine (echo suppression, drift correction)
+- `src/adapters/` — one `PlatformAdapter` per streaming platform (YouTube, Netflix)
+- `src/netflix-page.ts` — MAIN-world script on Netflix: seeks via Netflix's player API
+  (direct `video.currentTime` writes stall its player)
 - `src/popup.ts` + `public/popup.html` — read-only status popup

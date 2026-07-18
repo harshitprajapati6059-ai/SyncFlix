@@ -3,9 +3,12 @@
  * the popup only answers "is the extension seeing a video right now?".
  */
 
+import { gsap } from 'gsap';
+
 import type { ExtensionStatePayload } from './messages';
 
 function render(state: ExtensionStatePayload | undefined): void {
+  const card = document.getElementById('statusCard')!;
   const status = document.getElementById('status')!;
   const platform = document.getElementById('platform')!;
   const version = document.getElementById('version')!;
@@ -14,10 +17,11 @@ function render(state: ExtensionStatePayload | undefined): void {
 
   if (!state) {
     status.textContent = 'unavailable';
+    intro();
     return;
   }
   status.textContent = state.status === 'connected' ? 'connected' : 'waiting for video';
-  status.className = state.status;
+  card.className = `status-card anim ${state.status}`;
   platform.textContent = state.platform ?? '—';
   version.textContent = state.version;
 
@@ -25,9 +29,9 @@ function render(state: ExtensionStatePayload | undefined): void {
   // diagnosed here instead of by guesswork: a room tab with no player tab (or
   // vice versa) pinpoints which side never connected.
   roomTabs.textContent = state.roomTabs > 0 ? `${state.roomTabs} connected` : 'none open';
-  roomTabs.className = state.roomTabs > 0 ? 'connected' : 'waiting';
+  roomTabs.className = `node-value ${state.roomTabs > 0 ? 'connected' : 'waiting'}`;
   playerTabs.textContent = state.playerTabs > 0 ? `${state.playerTabs} connected` : 'none open';
-  playerTabs.className = state.playerTabs > 0 ? 'connected' : 'waiting';
+  playerTabs.className = `node-value ${state.playerTabs > 0 ? 'connected' : 'waiting'}`;
 
   // "Open video" — jump this machine to the room host's video. Shown whenever
   // the page has reported one and we're not already watching it.
@@ -43,6 +47,26 @@ function render(state: ExtensionStatePayload | undefined): void {
   } else {
     openRow.style.display = 'none';
   }
+
+  intro();
+}
+
+// Entrance choreography — runs once, after the first render has real values so
+// nothing visibly re-flows mid-animation. The popup document dies when it
+// closes, so no teardown is needed.
+let played = false;
+function intro(): void {
+  if (played) return;
+  played = true;
+  // No clearProps: it would also wipe the inline display:none that render()
+  // puts on the hidden "open video" row.
+  gsap.from('.anim', {
+    opacity: 0,
+    y: 7,
+    duration: 0.32,
+    stagger: 0.055,
+    ease: 'power2.out',
+  });
 }
 
 chrome.runtime.sendMessage({ type: 'GET_STATE' }, render);

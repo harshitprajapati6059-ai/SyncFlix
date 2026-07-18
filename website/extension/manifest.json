@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SyncFlix",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "minimum_chrome_version": "111",
   "description": "Synchronizes video playback with your SyncFlix watch-party room.",
   "background": {
     "service_worker": "background.js"
@@ -17,9 +18,15 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.youtube.com/*"],
+      "matches": ["https://*.youtube.com/*", "https://*.netflix.com/*"],
       "js": ["player.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.netflix.com/*"],
+      "js": ["netflix-page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "icons": {

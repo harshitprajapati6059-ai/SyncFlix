@@ -21,12 +21,13 @@ const options = {
     background: 'src/background.ts',
     bridge: 'src/bridge.ts',
     player: 'src/player.ts',
+    'netflix-page': 'src/netflix-page.ts',
     popup: 'src/popup.ts',
   },
   bundle: true,
   outdir: 'dist',
   format: 'iife', // content scripts and the service worker run as classic scripts
-  target: 'chrome110',
+  target: 'chrome111', // manifest minimum_chrome_version — MAIN-world content scripts need 111
   sourcemap: watch ? 'inline' : false,
   logLevel: 'info',
 };

@@ -43,6 +43,11 @@
     border-color: var(--border);
   }
 
+  ::selection {
+    background-color: #a6f5b8;
+    color: #0a0a0f;
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
@@ -51,11 +56,13 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  html {
-    scroll-behavior: smooth;
-  }
-
-  h1, h2, h3, h4, h5, h6, p {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
     margin: 0;
   }
 }
@@ -94,8 +101,13 @@
   }
 
   @keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
   }
 
   .heartbeat {
@@ -103,11 +115,22 @@
   }
 
   @keyframes heartbeat {
-    0%, 100% { transform: scale(1); }
-    14% { transform: scale(1.15); }
-    28% { transform: scale(1); }
-    42% { transform: scale(1.1); }
-    70% { transform: scale(1); }
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    14% {
+      transform: scale(1.15);
+    }
+    28% {
+      transform: scale(1);
+    }
+    42% {
+      transform: scale(1.1);
+    }
+    70% {
+      transform: scale(1);
+    }
   }
 
   .fade-in-up {
@@ -211,22 +234,22 @@
            focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring
            transition-all duration-150;
   }
-.badge-host  {
+  .badge-host {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-host-bg)] text-[var(--status-host)] border;
   }
-.badge-viewer  {
+  .badge-viewer {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-viewer-bg)] text-[var(--status-viewer)] border;
   }
-.badge-synced  {
+  .badge-synced {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-synced-bg)] text-[var(--status-synced)] border;
   }
-.badge-warning  {
+  .badge-warning {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-warning-bg)] text-[var(--status-warning)] border;
   }
-.badge-error  {
+  .badge-error {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-error-bg)] text-[var(--status-error)] border;
   }
-.badge-info  {
+  .badge-info {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--status-info-bg)] text-[var(--status-info)] border;
   }
 }

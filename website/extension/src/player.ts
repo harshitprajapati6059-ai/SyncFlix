@@ -1,5 +1,5 @@
 /**
- * Player content script — runs on the streaming site (YouTube in v1).
+ * Player content script — runs on the streaming site (YouTube, Netflix).
  *
  * Owns the sync engine:
  *   - Local user actions on the <video> → SYNC_EVENT up to the room page.
@@ -15,6 +15,7 @@
  *       > 3 s    hard seek
  */
 
+import { netflixAdapter } from './adapters/netflix';
 import { youtubeAdapter } from './adapters/youtube';
 import {
   PLAYER_PORT,
@@ -23,7 +24,9 @@ import {
   type SyncEventType,
 } from './messages';
 
-const adapter = youtubeAdapter;
+// One adapter per platform; the manifest only injects this script on hosts
+// that have one.
+const adapter = location.hostname.endsWith('netflix.com') ? netflixAdapter : youtubeAdapter;
 
 const RECONNECT_DELAY_MS = 1000;
 const VIDEO_POLL_MS = 1000;
@@ -98,6 +101,16 @@ function expect(action: ExpectedAction): void {
   expectations.push({ action, expires: Date.now() + EXPECTATION_TTL_MS });
 }
 
+/**
+ * Seek with echo suppression, routed through the adapter's platform-specific
+ * seek when it has one (Netflix rejects direct currentTime writes).
+ */
+function seekTo(v: HTMLVideoElement, seconds: number): void {
+  expect('seek');
+  if (adapter.seek) adapter.seek(seconds);
+  else v.currentTime = seconds;
+}
+
 /** True if this DOM event was caused by us applying a remote command. */
 function consumeExpectation(action: ExpectedAction): boolean {
   const now = Date.now();
@@ -147,8 +160,7 @@ function applyRemote({ event, payload }: SyncEventEnvelope): void {
     case 'PLAY': {
       const t = payload.currentTime;
       if (typeof t === 'number' && Math.abs(v.currentTime - t) > SEEK_TOLERANCE_S) {
-        expect('seek');
-        v.currentTime = t;
+        seekTo(v, t);
       }
       if (v.paused) {
         expect('play');
@@ -163,16 +175,14 @@ function applyRemote({ event, payload }: SyncEventEnvelope): void {
       }
       const t = payload.currentTime;
       if (typeof t === 'number' && Math.abs(v.currentTime - t) > SEEK_TOLERANCE_S) {
-        expect('seek');
-        v.currentTime = t;
+        seekTo(v, t);
       }
       break;
     }
     case 'SEEK': {
       const to = payload.to;
       if (typeof to === 'number') {
-        expect('seek');
-        v.currentTime = to;
+        seekTo(v, to);
       }
       break;
     }
@@ -215,16 +225,14 @@ function onHostHeartbeat(v: HTMLVideoElement, payload: Record<string, unknown>):
   if (!hostPlaying) {
     // While paused, converge with a plain seek — rate nudges do nothing.
     if (abs > SEEK_TOLERANCE_S) {
-      expect('seek');
-      v.currentTime = hostTime;
+      seekTo(v, hostTime);
     }
     endNudge(v);
     return;
   }
 
   if (abs > DRIFT_MAX_S) {
-    expect('seek');
-    v.currentTime = hostTime;
+    seekTo(v, hostTime);
     endNudge(v);
   } else if (abs > DRIFT_MIN_S) {
     nudging = true;

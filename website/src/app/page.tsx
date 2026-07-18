@@ -1,10 +1,10 @@
 import React from 'react';
-import HomepageContent from './components/HomepageContent';
+import LandingContent from './components/LandingContent';
 
 /**
- * Homepage — entry point.
- * Server component — no client state needed at this level.
+ * Landing page — marketing entry point.
+ * The create/join flow now lives at /start.
  */
 export default function HomePage() {
-  return <HomepageContent />;
+  return <LandingContent />;
 }

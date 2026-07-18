@@ -1,17 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Download } from 'lucide-react';
+import { LogOut, Download, CircleHelp, BookOpen } from 'lucide-react';
 import SyncLogo from '@/components/ui/SyncLogo';
 import CopyButton from '@/components/ui/CopyButton';
 import ConnectionDot from '@/components/ui/ConnectionDot';
 import RoleBadge from '@/components/ui/RoleBadge';
+import InstallExtensionModal from './InstallExtensionModal';
+import HowToUseModal from './HowToUseModal';
 import { useRoom } from '@/context/RoomContext';
 
 export default function RoomHeader() {
   const router = useRouter();
   const { room, currentUser, connectionStatus, leaveRoom } = useRoom();
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const [showUsageHelp, setShowUsageHelp] = useState(false);
 
   const handleLeave = () => {
     leaveRoom();
@@ -65,6 +69,24 @@ export default function RoomHeader() {
           <span className="hidden sm:inline">Extension</span>
         </a>
 
+        <button
+          onClick={() => setShowInstallHelp(true)}
+          className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+          title="How to install the extension"
+        >
+          <CircleHelp size={13} />
+          <span className="hidden sm:inline">How to install</span>
+        </button>
+
+        <button
+          onClick={() => setShowUsageHelp(true)}
+          className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+          title="How to use SyncFlix"
+        >
+          <BookOpen size={13} />
+          <span className="hidden sm:inline">How to use</span>
+        </button>
+
         {currentUser && (
           <>
             <div className="h-4 w-px bg-border hidden sm:block" />
@@ -88,6 +110,9 @@ export default function RoomHeader() {
           <span className="hidden sm:inline">Leave</span>
         </button>
       </div>
+
+      <InstallExtensionModal open={showInstallHelp} onClose={() => setShowInstallHelp(false)} />
+      <HowToUseModal open={showUsageHelp} onClose={() => setShowUsageHelp(false)} />
     </header>
   );
 }

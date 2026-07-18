@@ -30,4 +30,12 @@ export interface PlatformAdapter {
    * full reload.
    */
   onNavigation(callback: () => void): void;
+  /**
+   * Platform-specific seek override. Some players (Netflix) break when the
+   * <video> element's currentTime is written directly and must be seeked
+   * through their own player API instead. When absent, the engine seeks the
+   * element directly. The override MUST still cause normal seeking/seeked
+   * events on the element — the engine's echo suppression relies on them.
+   */
+  seek?(seconds: number): void;
 }
