@@ -10,10 +10,12 @@ import RoleBadge from '@/components/ui/RoleBadge';
 import InstallExtensionModal from './InstallExtensionModal';
 import HowToUseModal from './HowToUseModal';
 import { useRoom } from '@/context/RoomContext';
+import { useIsTouchDevice } from '@/hooks/useMediaQuery';
 
 export default function RoomHeader() {
   const router = useRouter();
   const { room, currentUser, connectionStatus, leaveRoom } = useRoom();
+  const isTouchDevice = useIsTouchDevice();
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [showUsageHelp, setShowUsageHelp] = useState(false);
 
@@ -59,24 +61,32 @@ export default function RoomHeader() {
           <ConnectionDot status={dotStatus} />
         </span>
 
-        <a
-          href="/downloads/syncflix-extension.zip"
-          download
-          className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-          title="Download the SyncFlix browser extension (load unpacked in chrome://extensions)"
-        >
-          <Download size={13} />
-          <span className="hidden sm:inline">Extension</span>
-        </a>
+        {/* Both of these dead-end on a phone or tablet: the download is a Chrome
+            unpacked bundle and the walkthrough opens with chrome://extensions,
+            which no mobile browser can reach. Hidden there rather than offered
+            and then failing. */}
+        {!isTouchDevice && (
+          <>
+            <a
+              href="/downloads/syncflix-extension.zip"
+              download
+              className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+              title="Download the SyncFlix browser extension (load unpacked in chrome://extensions)"
+            >
+              <Download size={13} />
+              <span className="hidden sm:inline">Extension</span>
+            </a>
 
-        <button
-          onClick={() => setShowInstallHelp(true)}
-          className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-          title="How to install the extension"
-        >
-          <CircleHelp size={13} />
-          <span className="hidden sm:inline">How to install</span>
-        </button>
+            <button
+              onClick={() => setShowInstallHelp(true)}
+              className="btn-ghost px-2.5 py-1.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+              title="How to install the extension"
+            >
+              <CircleHelp size={13} />
+              <span className="hidden sm:inline">How to install</span>
+            </button>
+          </>
+        )}
 
         <button
           onClick={() => setShowUsageHelp(true)}

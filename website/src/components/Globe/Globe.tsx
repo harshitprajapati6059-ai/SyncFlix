@@ -852,17 +852,32 @@ export default function Globe({
             startAnimation();
         }
 
-        const handleMouseDown = (event: MouseEvent) => {
+        // Pointer Events give mouse, touch and pen one code path. pan-y leaves
+        // vertical page scrolling to the browser (so the globe never traps the
+        // page on a phone) while horizontal drags reach us as pointermove.
+        canvas.style.touchAction = "pan-y";
+
+        const raycaster = new Raycaster();
+        const mouse = new Vector2();
+        let activePointerId: number | null = null;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (activePointerId !== null) return; // ignore additional fingers
+            activePointerId = event.pointerId;
             isDragging = true;
             velocity.x = 0;
             velocity.y = 0;
             lastMouseX = event.clientX;
             lastMouseY = event.clientY;
+            canvas.setPointerCapture(event.pointerId);
             startAnimation();
-            const handleMouseMoveDrag = (moveEvent: MouseEvent) => {
+        };
+
+        const handlePointerMove = (event: PointerEvent) => {
+            if (activePointerId === event.pointerId) {
                 const sensitivity = mapDragSpeedUiToSensitivity(dragSpeed);
-                const dx = moveEvent.clientX - lastMouseX;
-                const dy = moveEvent.clientY - lastMouseY;
+                const dx = event.clientX - lastMouseX;
+                const dy = event.clientY - lastMouseY;
                 targetRotation.x += dx * sensitivity;
                 targetRotation.y += dy * sensitivity;
                 targetRotation.y = Math.max(
@@ -871,23 +886,14 @@ export default function Globe({
                 );
                 velocity.x = dx * sensitivity * 0.3;
                 velocity.y = dy * sensitivity * 0.3;
-                lastMouseX = moveEvent.clientX;
-                lastMouseY = moveEvent.clientY;
-            };
-            const handleMouseUp = () => {
-                document.removeEventListener("mousemove", handleMouseMoveDrag);
-                document.removeEventListener("mouseup", handleMouseUp);
-                isDragging = false;
-            };
-            document.addEventListener("mousemove", handleMouseMoveDrag);
-            document.addEventListener("mouseup", handleMouseUp);
-        };
-        canvas.addEventListener("mousedown", handleMouseDown);
-
-        const raycaster = new Raycaster();
-        const mouse = new Vector2();
-        const handleMouseMove = (event: MouseEvent) => {
-            if (!stopOnHover) return;
+                lastMouseX = event.clientX;
+                lastMouseY = event.clientY;
+                return;
+            }
+            // Hover-to-pause is a mouse-only affordance: a touch pointer has no
+            // resting position, so applying it would leave the globe frozen at
+            // wherever the finger last was.
+            if (!stopOnHover || event.pointerType !== "mouse") return;
             const rect = canvas.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -895,7 +901,27 @@ export default function Globe({
             const intersects = raycaster.intersectObject(oceanMesh);
             isHovering = intersects.length > 0;
         };
-        canvas.addEventListener("mousemove", handleMouseMove);
+
+        // pointercancel fires when the browser takes the gesture over for a
+        // scroll, so releasing here is what stops a drag sticking after a swipe.
+        const handlePointerUp = (event: PointerEvent) => {
+            if (activePointerId !== event.pointerId) return;
+            activePointerId = null;
+            isDragging = false;
+            if (canvas.hasPointerCapture(event.pointerId)) {
+                canvas.releasePointerCapture(event.pointerId);
+            }
+        };
+
+        const handlePointerLeave = () => {
+            isHovering = false;
+        };
+
+        canvas.addEventListener("pointerdown", handlePointerDown);
+        canvas.addEventListener("pointermove", handlePointerMove);
+        canvas.addEventListener("pointerup", handlePointerUp);
+        canvas.addEventListener("pointercancel", handlePointerUp);
+        canvas.addEventListener("pointerleave", handlePointerLeave);
 
         const resizeObserver = new ResizeObserver(() => {
             const newWidth =
@@ -917,8 +943,11 @@ export default function Globe({
         return () => {
             if (animationFrameId !== null)
                 cancelAnimationFrame(animationFrameId);
-            canvas.removeEventListener("mousedown", handleMouseDown);
-            canvas.removeEventListener("mousemove", handleMouseMove);
+            canvas.removeEventListener("pointerdown", handlePointerDown);
+            canvas.removeEventListener("pointermove", handlePointerMove);
+            canvas.removeEventListener("pointerup", handlePointerUp);
+            canvas.removeEventListener("pointercancel", handlePointerUp);
+            canvas.removeEventListener("pointerleave", handlePointerLeave);
             resizeObserver.disconnect();
             renderer.dispose();
             container.removeChild(canvas);

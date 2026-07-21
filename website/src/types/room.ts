@@ -36,6 +36,8 @@ export interface PlaybackState {
   playing: boolean;
   status: PlaybackStatus;
   currentTime: number; // seconds
+  /** Total length in seconds. 0 when unknown — the extension doesn't report it. */
+  duration: number;
   playbackRate: number; // 1.0 = normal
   platform: string | null; // "YouTube" | "Netflix" | null — provided by extension
   lastUpdated: string; // ISO timestamp
@@ -68,6 +70,23 @@ export interface ExtensionState {
 
 /** The video the room host is currently watching, as learned from their events. */
 export interface HostVideo {
+  videoId: string | null;
+  videoUrl: string | null;
+}
+
+// ─── In-page player ──────────────────────────────────────────────────────────
+
+/**
+ * The extension-free playback path: a YouTube IFrame embedded in the room page.
+ * Used on phones and tablets, which cannot install the extension at all, and as
+ * a fallback on desktop when it isn't installed.
+ *
+ * When `active`, this player — not the extension and not the dead-reckoning
+ * ticker — owns the local playback clock.
+ */
+export interface InPagePlayerState {
+  /** True once a real YouTube player is mounted and holding a video. */
+  active: boolean;
   videoId: string | null;
   videoUrl: string | null;
 }
@@ -178,4 +197,8 @@ export interface RoomContextState {
   hostVideo: HostVideo;
   /** True when our player tab is on a different video than the host. */
   videoMismatch: boolean;
+  /** State of the in-page YouTube player (the extension-free path). */
+  inPagePlayer: InPagePlayerState;
+  /** True when this client is the presence-elected host. */
+  amHost: boolean;
 }

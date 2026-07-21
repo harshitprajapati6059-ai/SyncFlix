@@ -9,8 +9,14 @@ import { formatPlaybackTime, relativeTime } from '@/utils/time';
 export default function PlaybackPanel() {
   const { playbackState, syncState, room, hostVideo, videoMismatch } = useRoom();
 
-  const totalMockDuration = 5400; // 1h30m for display
-  const progressPct = Math.min(100, (playbackState?.currentTime / totalMockDuration) * 100);
+  // The in-page player reports a real duration; the extension never has, so
+  // treat 0 as "unknown" and show an indeterminate bar rather than inventing a
+  // total. (This used to be a hardcoded 1h30m, which read as a real number.)
+  const duration = playbackState?.duration ?? 0;
+  const hasDuration = duration > 0;
+  const progressPct = hasDuration
+    ? Math.min(100, ((playbackState?.currentTime ?? 0) / duration) * 100)
+    : 0;
 
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-5 gap-4 sm:gap-5 overflow-auto scrollbar-thin">
@@ -115,7 +121,7 @@ export default function PlaybackPanel() {
 
           <div className="flex justify-between text-[10px] font-mono-data text-muted-foreground">
             <span>{formatPlaybackTime(playbackState?.currentTime)}</span>
-            <span>{formatPlaybackTime(totalMockDuration)}</span>
+            <span>{hasDuration ? formatPlaybackTime(duration) : '--:--'}</span>
           </div>
         </div>
 

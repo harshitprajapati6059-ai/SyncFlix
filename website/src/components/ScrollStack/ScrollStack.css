@@ -35,7 +35,9 @@
   transform-origin: top center;
   will-change: transform, filter;
   backface-visibility: hidden;
-  height: 18rem;
+  /* min-height, not height: the longest feature copy wraps to ~5 lines on a
+     412px phone and a hard height would spill it past the card border. */
+  min-height: 18rem;
   width: 100%;
   margin: 30px 0;
   padding: 2rem;
@@ -58,7 +60,7 @@
 
 @media (min-width: 640px) {
   .scroll-stack-card {
-    height: 20rem;
+    min-height: 20rem;
     padding: 3rem;
   }
 }

@@ -128,6 +128,11 @@ export default function LiquidEther({
         this.isHoverInside = false;
         this.hasUserControl = false;
         this.isAutoActive = false;
+        // Touch gestures are ambiguous: the same finger that swirls the fluid is
+        // also how you scroll the page. We watch scroll position across a gesture
+        // and, once it moves, treat the rest of that gesture as a scroll only.
+        this.touchIsScroll = false;
+        this.touchStartScrollY = 0;
         this.autoIntensity = 2.0;
         this.takeoverActive = false;
         this.takeoverStartTime = 0;
@@ -217,23 +222,40 @@ export default function LiquidEther({
         this.setCoords(event.clientX, event.clientY);
         this.hasUserControl = true;
       }
+      currentScrollY() {
+        const view = this.listenerTarget;
+        if (!view) return 0;
+        return view.scrollY || (view.document && view.document.documentElement.scrollTop) || 0;
+      }
       onDocumentTouchStart(event) {
         if (event.touches.length !== 1) return;
+        const t = event.touches[0];
+        this.touchIsScroll = false;
+        this.touchStartScrollY = this.currentScrollY();
+        if (!this.updateHoverState(t.clientX, t.clientY)) return;
+        if (this.onInteract) this.onInteract();
+        // Park the cursor at the touch point without claiming user control yet —
+        // if this turns out to be a scroll, the auto demo should carry on.
+        this.setCoords(t.clientX, t.clientY);
+      }
+      onDocumentTouchMove(event) {
+        if (this.touchIsScroll) return;
+        if (event.touches.length !== 1) return;
+        // 4px of scroll means the browser committed the gesture to panning.
+        if (Math.abs(this.currentScrollY() - this.touchStartScrollY) > 4) {
+          this.touchIsScroll = true;
+          this.isHoverInside = false;
+          return;
+        }
         const t = event.touches[0];
         if (!this.updateHoverState(t.clientX, t.clientY)) return;
         if (this.onInteract) this.onInteract();
         this.setCoords(t.clientX, t.clientY);
         this.hasUserControl = true;
       }
-      onDocumentTouchMove(event) {
-        if (event.touches.length !== 1) return;
-        const t = event.touches[0];
-        if (!this.updateHoverState(t.clientX, t.clientY)) return;
-        if (this.onInteract) this.onInteract();
-        this.setCoords(t.clientX, t.clientY);
-      }
       onTouchEnd() {
         this.isHoverInside = false;
+        this.touchIsScroll = false;
       }
       onDocumentLeave() {
         this.isHoverInside = false;

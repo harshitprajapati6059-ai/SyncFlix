@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Plus,
   Hash,
+  Menu,
+  X,
   ArrowRight,
   Download,
   MonitorPlay,
@@ -29,6 +31,13 @@ gsap.registerPlugin(useGSAP, ScrollTrigger, ScrollSmoother);
 // Defined outside the component: inline arrays/objects would be a new reference
 // on every render and re-initialize the WebGL scenes.
 const ETHER_COLORS = ['#6ee7b7', '#38bdf8', '#a78bfa'];
+
+// Shared by the desktop link row and the mobile disclosure panel.
+const NAV_LINKS = [
+  { href: '#features', label: 'Features' },
+  { href: '#how-it-works', label: 'How it works' },
+  { href: '#extension', label: 'Extension' },
+];
 
 // SpecularButton presets tuned to the theme: mint primary CTAs and a neutral
 // glass secondary, both with the white specular rim following the cursor.
@@ -126,6 +135,7 @@ const STEPS = [
 
 export default function LandingContent() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useGSAP(
     (_context, contextSafe) => {
@@ -253,25 +263,60 @@ export default function LandingContent() {
           </div>
 
           <div className="hidden sm:flex items-center gap-6 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors duration-150">
-              Features
-            </a>
-            <a
-              href="#how-it-works"
-              className="hover:text-foreground transition-colors duration-150"
-            >
-              How it works
-            </a>
-            <a href="#extension" className="hover:text-foreground transition-colors duration-150">
-              Extension
-            </a>
+            {NAV_LINKS.map(({ href, label }) => (
+              <a
+                key={href}
+                href={href}
+                className="hover:text-foreground transition-colors duration-150"
+              >
+                {label}
+              </a>
+            ))}
           </div>
 
-          <SpecularButton {...SPECULAR_PRIMARY} size="sm" href="/start">
-            Open App
-            <ArrowRight size={14} />
-          </SpecularButton>
+          <div className="flex items-center gap-2">
+            <SpecularButton {...SPECULAR_PRIMARY} size="sm" href="/start">
+              Open App
+              <ArrowRight size={14} />
+            </SpecularButton>
+
+            {/* Below sm the link row is hidden, so this is the only way to
+                reach the sections. 44px box keeps it a comfortable tap target. */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              className="sm:hidden inline-flex items-center justify-center w-11 h-11 -mr-2 rounded-lg text-muted-foreground hover:text-foreground transition-colors duration-150"
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
         </nav>
+
+        {/* Kept mounted rather than conditionally rendered: useGSAP wires the
+            anchor-scroll listeners once on mount via querySelectorAll, and
+            links added to the DOM later would never get them. */}
+        <div
+          id="mobile-nav"
+          className={`sm:hidden overflow-hidden border-t border-border/60 transition-[max-height] duration-200 ease-out ${
+            menuOpen ? 'max-h-60' : 'max-h-0 border-t-0'
+          }`}
+        >
+          <div className="flex flex-col px-6 py-2">
+            {NAV_LINKS.map(({ href, label }) => (
+              <a
+                key={href}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                className="py-3 text-sm text-muted-foreground hover:text-foreground transition-colors duration-150"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        </div>
       </header>
 
       {/* ScrollSmoother structure: the page's real scrollbar stays native;

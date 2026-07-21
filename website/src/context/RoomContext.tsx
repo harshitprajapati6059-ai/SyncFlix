@@ -33,6 +33,7 @@ import type {
   SyncState,
   ExtensionState,
   HostVideo,
+  InPagePlayerState,
   SyncEvent,
   ChatMessage,
   SyncEventType,
@@ -45,13 +46,37 @@ import {
   sendHostVideoToExtension,
 } from '@/services/extensionBridge';
 import { getSessionIdentity } from '@/utils/session';
+import { youTubeWatchUrl } from '@/services/youtube';
+
+/** A remote sync event, delivered to the in-page player so it can apply it. */
+export type RemoteSyncHandler = (event: SyncEventType, payload: Record<string, unknown>) => void;
 
 interface RoomContextValue extends RoomContextState {
   sendChatMessage: (message: string) => void;
   copyRoomCode: () => void;
   leaveRoom: () => void;
   broadcastEvent: (type: SyncEventType, payload: Record<string, unknown>) => void;
+
+  // ─── In-page player plumbing ───────────────────────────────────────────────
+  /** Declare the video the in-page player holds (null tears the player down). */
+  setInPageVideo: (videoId: string | null) => void;
+  /**
+   * Report the in-page player's real position. Updates local state only — the
+   * host's heartbeat interval is what puts it on the wire, exactly as with the
+   * extension's POSITION_UPDATE.
+   */
+  reportInPagePosition: (currentTime: number, playing: boolean, duration?: number) => void;
+  /** Subscribe to remote sync events. Returns an unsubscribe function. */
+  subscribeRemoteSync: (handler: RemoteSyncHandler) => () => void;
+  /**
+   * Register a function the host heartbeat can call to read the player's real
+   * position at send time. Returns an unregister function.
+   */
+  registerPositionSampler: (sampler: PositionSampler) => () => void;
 }
+
+/** Reads live playback position straight from the player. Null if unavailable. */
+export type PositionSampler = () => { currentTime: number; playing: boolean } | null;
 
 const RoomContext = createContext<RoomContextValue | null>(null);
 
@@ -76,6 +101,7 @@ const INITIAL_PLAYBACK: PlaybackState = {
   playing: false,
   status: 'idle',
   currentTime: 0,
+  duration: 0,
   playbackRate: 1.0,
   platform: null,
   lastUpdated: new Date().toISOString(),
@@ -102,6 +128,8 @@ const INITIAL_EXTENSION: ExtensionState = {
 };
 
 const INITIAL_HOST_VIDEO: HostVideo = { videoId: null, videoUrl: null };
+
+const INITIAL_IN_PAGE: InPagePlayerState = { active: false, videoId: null, videoUrl: null };
 
 // Monotonic id source for event-log entries and chat messages. The previous
 // ids were derived from list length, which repeats once the log is capped —
@@ -130,6 +158,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   const [syncState, setSyncState] = useState<SyncState>(INITIAL_SYNC);
   const [extensionState, setExtensionState] = useState<ExtensionState>(INITIAL_EXTENSION);
   const [hostVideo, setHostVideo] = useState<HostVideo>(INITIAL_HOST_VIDEO);
+  const [inPagePlayer, setInPagePlayer] = useState<InPagePlayerState>(INITIAL_IN_PAGE);
   const [connectionStatus, setConnectionStatus] =
     useState<RoomContextState['connectionStatus']>('connecting');
   const [events, setEvents] = useState<SyncEvent[]>([]);
@@ -155,6 +184,31 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   hostIdRef.current = hostId;
   const extensionRef = useRef<ExtensionState>(INITIAL_EXTENSION);
   extensionRef.current = extensionState;
+  const inPageRef = useRef<InPagePlayerState>(INITIAL_IN_PAGE);
+  inPageRef.current = inPagePlayer;
+
+  // Subscribers to remote sync events — currently just the in-page player.
+  // A ref-held Set rather than state: handlers register during the player's
+  // effect and must not re-run the channel subscription that feeds them.
+  const remoteSyncHandlers = useRef<Set<RemoteSyncHandler>>(new Set());
+  const subscribeRemoteSync = useCallback((handler: RemoteSyncHandler) => {
+    remoteSyncHandlers.current.add(handler);
+    return () => {
+      remoteSyncHandlers.current.delete(handler);
+    };
+  }, []);
+
+  // Lets the heartbeat read the in-page player's position at send time rather
+  // than reusing the once-a-second React state, which is up to a full tick old
+  // by the time it goes out — a systematic bias big enough that viewers were
+  // getting corrected backwards on a loop.
+  const positionSampler = useRef<PositionSampler | null>(null);
+  const registerPositionSampler = useCallback((sampler: PositionSampler) => {
+    positionSampler.current = sampler;
+    return () => {
+      if (positionSampler.current === sampler) positionSampler.current = null;
+    };
+  }, []);
 
   // True when our player tab is on a different video than the host's.
   const videoMismatch =
@@ -223,9 +277,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       // Election: first in the (joinedAt-sorted) roster is host. Displayed
       // roles are derived from that, not from what each client claims.
       const electedHost = roster[0]?.userId ?? null;
-      setUsers(
-        roster.map((u) => ({ ...u, role: u.userId === electedHost ? 'host' : 'viewer' }))
-      );
+      setUsers(roster.map((u) => ({ ...u, role: u.userId === electedHost ? 'host' : 'viewer' })));
     });
 
     // Apply an incoming playback state from a peer (host-authoritative).
@@ -246,6 +298,14 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       const localVid = extensionRef.current.videoId;
       if (remoteVid && localVid && remoteVid !== localVid) return;
       sendSyncEventToExtension(event, payload);
+    };
+
+    // Hand a remote event to whichever player owns playback here. Both paths are
+    // offered every event: at most one of them is ever mounted, and each applies
+    // its own video-identity check before acting.
+    const deliverRemote = (event: SyncEventType, payload: Record<string, unknown>) => {
+      forwardToExtension(event, payload);
+      remoteSyncHandlers.current.forEach((handler) => handler(event, payload));
     };
 
     // Track which video the host is on, learned from their stamped events.
@@ -270,7 +330,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         userId
       );
       noteHostVideo(userId, payload);
-      if (userId !== identity.userId) forwardToExtension('PLAY', payload);
+      if (userId !== identity.userId) deliverRemote('PLAY', payload);
       logEvent('PLAY', userId, username, payload);
     });
 
@@ -284,7 +344,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         userId
       );
       noteHostVideo(userId, payload);
-      if (userId !== identity.userId) forwardToExtension('PAUSE', payload);
+      if (userId !== identity.userId) deliverRemote('PAUSE', payload);
       logEvent('PAUSE', userId, username, payload);
     });
 
@@ -294,7 +354,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         userId
       );
       noteHostVideo(userId, payload);
-      if (userId !== identity.userId) forwardToExtension('SEEK', payload);
+      if (userId !== identity.userId) deliverRemote('SEEK', payload);
       logEvent('SEEK', userId, username, payload);
     });
 
@@ -304,7 +364,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
         userId
       );
       noteHostVideo(userId, payload);
-      if (userId !== identity.userId) forwardToExtension('PLAYBACK_SPEED', payload);
+      if (userId !== identity.userId) deliverRemote('PLAYBACK_SPEED', payload);
       logEvent('PLAYBACK_SPEED', userId, username, payload);
     });
 
@@ -325,7 +385,7 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       if (hostTime === null) return;
 
       // Let the extension's sync engine correct the real video against the host.
-      forwardToExtension('POSITION_UPDATE', payload);
+      deliverRemote('POSITION_UPDATE', payload);
 
       setPlaybackState((prev) => {
         const drift = prev.currentTime - hostTime;
@@ -433,12 +493,17 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   // (Viewers learn it from the stamped heartbeat instead.)
   useEffect(() => {
     if (!amHost) return;
+    // Same precedence as the heartbeat: the in-page player, when active, is the
+    // authority on what the host is watching.
+    const source = inPagePlayer.active ? inPagePlayer : extensionState;
     setHostVideo((prev) =>
-      prev.videoId === extensionState.videoId && prev.videoUrl === extensionState.videoUrl
+      prev.videoId === source.videoId && prev.videoUrl === source.videoUrl
         ? prev
-        : { videoId: extensionState.videoId, videoUrl: extensionState.videoUrl }
+        : { videoId: source.videoId, videoUrl: source.videoUrl }
     );
-  }, [amHost, extensionState.videoId, extensionState.videoUrl]);
+    // Re-running on the whole objects is fine: setHostVideo returns `prev`
+    // unchanged when the identity hasn't actually moved, so no extra render.
+  }, [amHost, extensionState, inPagePlayer]);
 
   // Report the host's video URL down to the extension so its popup can offer
   // an "Open video" link. Re-sent on every extension state message — the MV3
@@ -459,12 +524,19 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     if (hostId === null || !amHost || connectionStatus !== 'connected') return;
     const interval = setInterval(() => {
       const pb = playbackRef.current;
-      const ext = extensionRef.current;
+      // Whichever player owns playback here stamps its video identity onto the
+      // heartbeat. The in-page player wins when active: on a phone the extension
+      // can never attach, so reading extensionRef alone would broadcast a null
+      // videoId and viewers would never learn what the host is watching.
+      const inPage = inPageRef.current;
+      const source = inPage.active ? inPage : extensionRef.current;
+      // Prefer a position sampled right now over the throttled state mirror.
+      const live = positionSampler.current?.() ?? null;
       channelRef.current?.broadcast('POSITION_UPDATE', {
-        currentTime: pb.currentTime,
-        playing: pb.playing,
-        videoId: ext.videoId,
-        videoUrl: ext.videoUrl,
+        currentTime: live ? live.currentTime : pb.currentTime,
+        playing: live ? live.playing : pb.playing,
+        videoId: source.videoId,
+        videoUrl: source.videoUrl,
       });
     }, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(interval);
@@ -477,6 +549,10 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   useEffect(() => {
     if (!playbackState.playing || connectionStatus !== 'connected') return;
     if (extensionState.status === 'connected') return;
+    // The in-page player reports its true position every second. Letting this
+    // dead-reckoning clock run alongside it would advance currentTime twice per
+    // second and corrupt the host's heartbeat at its source.
+    if (inPagePlayer.active) return;
     const interval = setInterval(() => {
       setPlaybackState((prev) =>
         prev.playing
@@ -489,11 +565,63 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, [playbackState.playing, playbackState.playbackRate, connectionStatus, extensionState.status]);
+  }, [
+    playbackState.playing,
+    playbackState.playbackRate,
+    connectionStatus,
+    extensionState.status,
+    inPagePlayer.active,
+  ]);
 
   const broadcastEvent = useCallback((type: SyncEventType, payload: Record<string, unknown>) => {
     channelRef.current?.broadcast(type, payload);
   }, []);
+
+  // ─── In-page player plumbing ────────────────────────────────────────────────
+
+  const setInPageVideo = useCallback((videoId: string | null) => {
+    setInPagePlayer((prev) => {
+      if (prev.videoId === videoId) return prev;
+      return videoId
+        ? { active: true, videoId, videoUrl: youTubeWatchUrl(videoId) }
+        : INITIAL_IN_PAGE;
+    });
+    if (!videoId) {
+      // Tearing the player down hands the clock back to the dead-reckoning
+      // ticker, which only stops while `playing` is false. Without this reset it
+      // would keep advancing a position for a host that no longer has a player,
+      // and heartbeat that invented time out to every viewer.
+      setPlaybackState((prev) =>
+        prev.playing || prev.status !== 'idle'
+          ? { ...prev, playing: false, status: 'idle', lastUpdated: new Date().toISOString() }
+          : prev
+      );
+      return;
+    }
+    setPlaybackState((prev) =>
+      prev.platform === 'YouTube' ? prev : { ...prev, platform: 'YouTube' }
+    );
+  }, []);
+
+  // Mirrors the extension's POSITION_UPDATE contract exactly: local state only.
+  // Broadcasting from here would put every viewer's clock on the wire, and only
+  // the host's position is authoritative.
+  const reportInPagePosition = useCallback(
+    (currentTime: number, playing: boolean, duration?: number) => {
+      setPlaybackState((prev) => ({
+        ...prev,
+        currentTime,
+        playing,
+        // The extension never reports a duration, so keep whatever we had
+        // rather than clobbering it with 0.
+        duration: duration && duration > 0 ? duration : prev.duration,
+        status: playing ? 'playing' : 'paused',
+        lastUpdated: new Date().toISOString(),
+        updatedBy: identity.userId,
+      }));
+    },
+    [identity.userId]
+  );
 
   const sendChatMessage = useCallback(
     (message: string) => {
@@ -541,10 +669,16 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     chatMessages,
     hostVideo,
     videoMismatch,
+    inPagePlayer,
+    amHost,
     sendChatMessage,
     copyRoomCode,
     leaveRoom,
     broadcastEvent,
+    setInPageVideo,
+    reportInPagePosition,
+    subscribeRemoteSync,
+    registerPositionSampler,
   };
 
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;

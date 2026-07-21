@@ -1,11 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Puzzle, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Puzzle, CheckCircle2, XCircle, Clock, Smartphone } from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
+import { useIsTouchDevice } from '@/hooks/useMediaQuery';
 
 export default function ExtensionPanel() {
   const { extensionState } = useRoom();
+  const isTouchDevice = useIsTouchDevice();
 
   const statusConfig = {
     connected: {
@@ -28,7 +30,20 @@ export default function ExtensionPanel() {
     },
   };
 
-  const config = statusConfig?.[extensionState?.status];
+  // On a phone or tablet the extension is not missing — it's impossible. iOS
+  // only permits Safari extensions shipped inside a native App Store app, and
+  // Chrome on Android supports none at all. Showing a red "not detected" error
+  // there blames the user for a platform limit and points them at an install
+  // flow that starts with chrome://extensions, which they cannot open.
+  const config =
+    isTouchDevice && extensionState?.status !== 'connected'
+      ? {
+          icon: <Smartphone size={14} className="text-muted-foreground" />,
+          label: 'Watching on mobile',
+          labelClass: 'text-muted-foreground',
+          bg: 'bg-muted/50 border-border',
+        }
+      : statusConfig?.[extensionState?.status];
 
   return (
     <div className="px-4 sm:px-5 pb-4 shrink-0">
@@ -53,6 +68,13 @@ export default function ExtensionPanel() {
           <span className="text-[10px] text-muted-foreground">v{extensionState?.version}</span>
         )}
       </div>
+
+      {isTouchDevice && extensionState?.status !== 'connected' && (
+        <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">
+          Mobile browsers can’t run extensions. Open “Watch here” above to play YouTube inside the
+          room. For Netflix, join from a computer with the extension installed.
+        </p>
+      )}
     </div>
   );
 }
