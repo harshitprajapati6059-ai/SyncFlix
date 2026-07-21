@@ -257,9 +257,18 @@ export default function Globe({
         camera.position.set(0, 0, cameraDistance);
         camera.lookAt(0, 0, 0);
 
-        const renderer = new WebGLRenderer({ antialias: true, alpha: true });
+        // Phones report DPRs of 3+; rendering this at 2x costs 4x the fragments
+        // of 1x. The globe is dots and thin lines, so 1.5x on a coarse pointer
+        // keeps the edges clean at a fraction of the fill cost.
+        const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+        const renderer = new WebGLRenderer({
+            antialias: !isCoarsePointer,
+            alpha: true,
+        });
         renderer.setSize(containerWidth, containerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(
+            Math.min(window.devicePixelRatio, isCoarsePointer ? 1.5 : 2)
+        );
         renderer.outputColorSpace = "srgb";
         const canvas = renderer.domElement;
         canvas.style.position = "absolute";
@@ -848,6 +857,25 @@ export default function Globe({
                 animationFrameId = requestAnimationFrame(animate);
             }
         };
+        // The globe idles at rotationSpeed !== 0, so without this it keeps a
+        // rAF and a WebGL draw running for the entire page — including while
+        // the user is several sections away. On mobile that competes with
+        // scrolling for the same GPU.
+        let onScreen = true;
+        const visibilityObserver = new IntersectionObserver(
+            ([entry]) => {
+                onScreen = entry.isIntersecting;
+                if (onScreen) {
+                    startAnimation();
+                } else if (animationFrameId !== null) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+            },
+            { rootMargin: "100px" }
+        );
+        visibilityObserver.observe(container);
+
         if (rotationSpeed !== 0) {
             startAnimation();
         }
@@ -949,6 +977,7 @@ export default function Globe({
             canvas.removeEventListener("pointercancel", handlePointerUp);
             canvas.removeEventListener("pointerleave", handlePointerLeave);
             resizeObserver.disconnect();
+            visibilityObserver.disconnect();
             renderer.dispose();
             container.removeChild(canvas);
         };

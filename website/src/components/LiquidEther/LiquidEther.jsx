@@ -75,6 +75,7 @@ export default function LiquidEther({
         this.height = 0;
         this.aspect = 1;
         this.pixelRatio = 1;
+        this.qualityScale = 1;
         this.isMobile = false;
         this.breakpoint = 768;
         this.fboWidth = null;
@@ -87,9 +88,15 @@ export default function LiquidEther({
       }
       init(container) {
         this.container = container;
-        this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        // A phone with a 3x screen was rendering this full-viewport effect at
+        // 2x device pixels — 4x the fragments of 1x for a soft, out-of-focus
+        // background nobody can see the pixels of. Coarse-pointer devices draw
+        // at 1x, at 60% simulation resolution, without MSAA.
+        this.isMobile = window.matchMedia('(pointer: coarse)').matches;
+        this.pixelRatio = Math.min(window.devicePixelRatio || 1, this.isMobile ? 1 : 2);
+        this.qualityScale = this.isMobile ? 0.6 : 1;
         this.resize();
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: !this.isMobile, alpha: true });
         this.renderer.autoClear = false;
         this.renderer.setClearColor(new THREE.Color(0x000000), 0);
         this.renderer.setPixelRatio(this.pixelRatio);
@@ -861,8 +868,14 @@ export default function LiquidEther({
         });
       }
       calcSize() {
-        const width = Math.max(1, Math.round(this.options.resolution * Common.width));
-        const height = Math.max(1, Math.round(this.options.resolution * Common.height));
+        // qualityScale shrinks every simulation buffer on phones. The sim runs
+        // ~8 full-screen passes per frame (advection, viscosity, divergence,
+        // poisson iterations, pressure), so halving each axis cuts the
+        // per-frame fragment work to a quarter — the difference between a
+        // smooth scroll and a stuttering one on a mid-range handset.
+        const scale = this.options.resolution * Common.qualityScale;
+        const width = Math.max(1, Math.round(scale * Common.width));
+        const height = Math.max(1, Math.round(scale * Common.height));
         const px_x = 1.0 / width;
         const px_y = 1.0 / height;
         this.cellScale.set(px_x, px_y);
@@ -899,8 +912,14 @@ export default function LiquidEther({
           });
         }
         this.divergence.update({ vel });
+        // The pressure solve is the frame's hot loop: one full-screen pass per
+        // iteration. 32 is overkill for a decorative blob — mobile settles for
+        // 12, which is visually indistinguishable here and drops the pass count
+        // by ~60%.
         const pressure = this.poisson.update({
-          iterations: this.options.iterations_poisson
+          iterations: Common.isMobile
+            ? Math.min(12, this.options.iterations_poisson)
+            : this.options.iterations_poisson
         });
         this.pressure.update({ vel, pressure });
       }
@@ -985,6 +1004,14 @@ export default function LiquidEther({
         this.output = new Output();
       }
       resize() {
+        // On phones the address bar collapsing/expanding fires `resize` on
+        // nearly every scroll gesture, and a full resize reallocates every
+        // simulation FBO — which stalls the frame and shows up as scroll jank.
+        // The width is what actually matters for the sim, so ignore the
+        // height-only churn.
+        const width = window.innerWidth;
+        if (this._lastWidth === width) return;
+        this._lastWidth = width;
         Common.resize();
         this.output.resize();
       }

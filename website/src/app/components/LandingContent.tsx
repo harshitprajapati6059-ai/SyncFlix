@@ -141,6 +141,11 @@ export default function LandingContent() {
     (_context, contextSafe) => {
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+      // Mobile browsers fire `resize` every time the address bar collapses.
+      // Left alone, each one triggers a full ScrollTrigger refresh mid-scroll,
+      // which re-measures every trigger and visibly jumps the pinned sections.
+      ScrollTrigger.config({ ignoreMobileResize: true });
+
       // Buttery site-wide scrolling — the same ScrollSmoother gsap.com uses.
       // ScrollTrigger reads the smoothed position automatically, so the
       // reveals and the ScrollStack pinning all run on one GSAP ticker.

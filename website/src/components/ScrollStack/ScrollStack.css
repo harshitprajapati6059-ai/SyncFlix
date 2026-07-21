@@ -58,6 +58,20 @@
   transform: translateZ(0);
 }
 
+/* Touch / reduced-motion variant: the browser pins the cards with
+   `position: sticky` and JS never runs per frame. `top` is set inline per
+   card so each one lands itemStackDistance below the previous. */
+.scroll-stack-static .scroll-stack-card {
+  position: sticky;
+  transform: none;
+  -webkit-transform: none;
+  /* blur() on five overlapping full-width cards is the single most expensive
+     thing on a phone GPU — it repaints the whole stack every frame. */
+  filter: none;
+  will-change: auto;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
 @media (min-width: 640px) {
   .scroll-stack-card {
     min-height: 20rem;
