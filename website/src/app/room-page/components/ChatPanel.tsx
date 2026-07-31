@@ -4,11 +4,14 @@ import React, { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
 import { formatTimestamp } from '@/utils/time';
+import { AppleEmojiText } from '@/components/AppleEmoji';
+import EmojiPickerButton from '@/components/EmojiPickerButton';
 
 export default function ChatPanel() {
   const { chatMessages, sendChatMessage, currentUser } = useRoom();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -27,6 +30,18 @@ export default function ChatPanel() {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? input.length;
+    const next = `${input.slice(0, caret)}${emoji}${input.slice(caret)}`;
+    setInput(next.slice(0, 200));
+    requestAnimationFrame(() => {
+      el?.focus();
+      const nextCaret = caret + emoji.length;
+      el?.setSelectionRange(nextCaret, nextCaret);
+    });
   };
 
   return (
@@ -66,7 +81,7 @@ export default function ChatPanel() {
                       : 'bg-muted text-foreground rounded-bl-sm'
                   }`}
                 >
-                  {msg.message}
+                  <AppleEmojiText text={msg.message} size={14} />
                 </div>
                 <span className="text-[9px] text-muted-foreground px-1 font-mono-data">
                   {formatTimestamp(msg.timestamp)}
@@ -82,6 +97,7 @@ export default function ChatPanel() {
       <div className="px-3 pb-3 pt-2 border-t border-border shrink-0">
         <div className="flex items-center gap-2 bg-input border border-border rounded-xl px-3 py-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring transition-all duration-150">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -90,6 +106,7 @@ export default function ChatPanel() {
             maxLength={200}
             className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
           />
+          <EmojiPickerButton onEmojiSelect={handleEmojiSelect} />
           <button
             onClick={handleSend}
             disabled={!input.trim()}

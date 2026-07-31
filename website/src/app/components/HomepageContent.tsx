@@ -45,7 +45,7 @@ export default function HomepageContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-between bg-background px-6">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh flex flex-col items-center justify-between bg-background px-6">
       {/* Main centered content */}
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm mx-auto">
         {/* Logo + Brand */}
