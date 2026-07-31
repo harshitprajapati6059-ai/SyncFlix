@@ -6,6 +6,7 @@ import { RoomProvider } from '@/context/RoomContext';
 import RoomHeader from './RoomHeader';
 import RoomLayout from './RoomLayout';
 import RoomConnecting from './RoomConnecting';
+import VideoCallPiP from './VideoCallPiP';
 import { useRoom } from '@/context/RoomContext';
 
 function RoomInner() {
@@ -16,10 +17,15 @@ function RoomInner() {
   }
 
   return (
-    <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-background overflow-hidden">
-      <RoomHeader />
-      <RoomLayout />
-    </div>
+    // Mounted here (not inside VideoCallPanel) so it stays alive — and can
+    // auto-enter picture-in-picture on tab-hide — regardless of which
+    // sidebar tab is currently open.
+    <VideoCallPiP>
+      <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-background overflow-hidden">
+        <RoomHeader />
+        <RoomLayout />
+      </div>
+    </VideoCallPiP>
   );
 }
 
