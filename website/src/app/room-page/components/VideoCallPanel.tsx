@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { Video, VideoOff, Mic, MicOff, PhoneOff, PhoneCall, RefreshCw } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, Phone, X, PhoneCall, RefreshCw } from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
 import type { PeerConnectionStatus } from '@/types/room';
 
@@ -10,6 +10,16 @@ function Avatar({ username }: { username?: string }) {
     <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-sm font-bold text-foreground uppercase">
       {username?.slice(0, 2)}
     </div>
+  );
+}
+
+/** Handset + a distinct X badge (not a slash-through) — matches the hang-up icon design. */
+function HangUpIcon({ size = 15 }: { size?: number }) {
+  return (
+    <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
+      <Phone size={size} strokeWidth={2} className="absolute inset-0" />
+      <X size={Math.round(size * 0.6)} strokeWidth={2.5} className="absolute -top-0.5 -right-0.5" />
+    </span>
   );
 }
 
@@ -207,9 +217,9 @@ export default function VideoCallPanel() {
           <button
             onClick={leaveCall}
             title="Leave call"
-            className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--status-error)] text-white hover:opacity-90 transition-opacity"
+            className="w-9 h-9 rounded-full flex items-center justify-center bg-[#D32F2F] text-white hover:opacity-90 transition-opacity"
           >
-            <PhoneOff size={15} />
+            <HangUpIcon size={15} />
           </button>
         </div>
       )}
