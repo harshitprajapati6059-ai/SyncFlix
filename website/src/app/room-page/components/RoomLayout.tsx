@@ -8,9 +8,10 @@ import EventLogPanel from './EventLogPanel';
 import ChatPanel from './ChatPanel';
 import ExtensionPanel from './ExtensionPanel';
 import InPagePlayer from './InPagePlayer';
+import VideoCallPanel from './VideoCallPanel';
 import { useRoom } from '@/context/RoomContext';
 
-type Tab = 'playback' | 'users' | 'chat' | 'events';
+type Tab = 'playback' | 'users' | 'chat' | 'events' | 'video';
 type RightTab = Exclude<Tab, 'playback'>;
 
 export default function RoomLayout() {
@@ -19,7 +20,7 @@ export default function RoomLayout() {
   // slot, so it stays closed until someone asks for it rather than being the
   // default surface for every mobile visitor.
   const [watchHereOpen, setWatchHereOpen] = useState(false);
-  const { extensionState, hostVideo } = useRoom();
+  const { extensionState, hostVideo, videoCallState } = useRoom();
 
   // Only one thing may drive playback. When the extension is attached it owns a
   // real video tab and the in-page player would be a second, competing source;
@@ -37,12 +38,14 @@ export default function RoomLayout() {
   const mobileTabs: { id: Tab; label: string }[] = [
     { id: 'playback', label: 'Playback' },
     { id: 'users', label: 'Users' },
+    { id: 'video', label: 'Video' },
     { id: 'chat', label: 'Chat' },
     { id: 'events', label: 'Events' },
   ];
 
   const rightTabs: { id: RightTab; label: string }[] = [
     { id: 'users', label: 'Users' },
+    { id: 'video', label: 'Video' },
     { id: 'chat', label: 'Chat' },
     { id: 'events', label: 'Events' },
   ];
@@ -62,9 +65,12 @@ export default function RoomLayout() {
           <button
             key={`mtab-${t.id}`}
             onClick={() => setTab(t.id)}
-            className={tabButtonClass(tab === t.id)}
+            className={`${tabButtonClass(tab === t.id)} relative`}
           >
             {t.label}
+            {t.id === 'video' && videoCallState.inCall && (
+              <span className="absolute top-1.5 right-1/2 translate-x-4 h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
           </button>
         ))}
       </div>
@@ -127,9 +133,12 @@ export default function RoomLayout() {
             <button
               key={`tab-${t.id}`}
               onClick={() => setTab(t.id)}
-              className={tabButtonClass(rightTab === t.id)}
+              className={`${tabButtonClass(rightTab === t.id)} relative`}
             >
               {t.label}
+              {t.id === 'video' && videoCallState.inCall && (
+                <span className="absolute top-1.5 right-1/2 translate-x-4 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
             </button>
           ))}
         </div>
@@ -137,6 +146,7 @@ export default function RoomLayout() {
         {/* Tab content */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {rightTab === 'users' && <UsersPanel />}
+          {rightTab === 'video' && <VideoCallPanel />}
           {rightTab === 'chat' && <ChatPanel />}
           {rightTab === 'events' && <EventLogPanel />}
         </div>

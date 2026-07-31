@@ -20,6 +20,10 @@ function parseVideoId(loc: Location): string | null {
 export const youtubeAdapter: PlatformAdapter = {
   platform: 'YouTube',
 
+  matches(hostname) {
+    return /(^|\.)youtube\.com$/.test(hostname);
+  },
+
   findVideo() {
     return (
       document.querySelector<HTMLVideoElement>('video.html5-main-video') ??

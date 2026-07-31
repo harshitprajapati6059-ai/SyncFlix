@@ -90,7 +90,7 @@ const FEATURES = [
     icon: MonitorPlay,
     title: 'Works on real players',
     description:
-      'The extension drives the actual video player on the page. YouTube and Netflix today, more platforms coming.',
+      'The extension drives the actual video player on the page. YouTube, Netflix and Prime Video today, more platforms coming.',
   },
   {
     icon: UserX,
@@ -385,7 +385,8 @@ export default function LandingContent() {
               </div>
 
               <p data-hero className="mt-6 text-xs text-muted-foreground">
-                Free · No sign-up · Works with YouTube &amp; Netflix via the browser extension
+                Free · No sign-up · Works with YouTube, Netflix &amp; Prime Video via the browser
+                extension
               </p>
 
               {/* Sync demo */}
@@ -522,7 +523,7 @@ export default function LandingContent() {
             <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
               <div data-reveal>
                 <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-                  Sync YouTube &amp; Netflix from{' '}
+                  Sync YouTube, Netflix &amp; Prime Video from{' '}
                   <span className="text-primary">anywhere in the world.</span>
                 </h2>
                 <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-md">

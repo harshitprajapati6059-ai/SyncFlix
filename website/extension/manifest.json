@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SyncFlix",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minimum_chrome_version": "111",
   "description": "Synchronizes video playback with your SyncFlix watch-party room.",
   "background": {
@@ -18,7 +18,30 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.youtube.com/*", "https://*.netflix.com/*"],
+      "matches": [
+        "https://*.youtube.com/*",
+        "https://*.netflix.com/*",
+        "https://*.primevideo.com/*",
+        "https://*.amazon.com/gp/video/*",
+        "https://*.amazon.ca/gp/video/*",
+        "https://*.amazon.com.br/gp/video/*",
+        "https://*.amazon.com.mx/gp/video/*",
+        "https://*.amazon.co.uk/gp/video/*",
+        "https://*.amazon.de/gp/video/*",
+        "https://*.amazon.fr/gp/video/*",
+        "https://*.amazon.it/gp/video/*",
+        "https://*.amazon.es/gp/video/*",
+        "https://*.amazon.nl/gp/video/*",
+        "https://*.amazon.se/gp/video/*",
+        "https://*.amazon.pl/gp/video/*",
+        "https://*.amazon.com.tr/gp/video/*",
+        "https://*.amazon.ae/gp/video/*",
+        "https://*.amazon.sa/gp/video/*",
+        "https://*.amazon.in/gp/video/*",
+        "https://*.amazon.sg/gp/video/*",
+        "https://*.amazon.co.jp/gp/video/*",
+        "https://*.amazon.com.au/gp/video/*"
+      ],
       "js": ["player.js"],
       "run_at": "document_idle"
     },

@@ -5,13 +5,20 @@
  *   - It exposes no navigation event (nothing like `yt-navigate-finish`), so
  *     the engine's 1 s poll is the primary navigation detector; popstate is
  *     wired up only to catch back/forward a beat faster.
- *   - Writing video.currentTime directly stalls or errors the player, so
- *     seeks go through Netflix's internal player API via the main-world
- *     script (netflix-page.ts) — see the `seek` override below.
+ *   - The <video> element must not be driven directly: writing currentTime
+ *     stalls or errors the player, and play()/pause() behind Netflix's back get
+ *     reverted by its own state machine. All three go through Netflix's
+ *     internal player API via the main-world script (netflix-page.ts).
  */
 
-import { NETFLIX_SEEK_TYPE, type NetflixSeekMessage } from '../messages';
+import { NETFLIX_CMD_TYPE, type NetflixCommand, type NetflixCommandMessage } from '../messages';
 import type { PlatformAdapter, VideoInfo } from './types';
+
+/** Post a playback command to the main-world script (netflix-page.ts). */
+function command(action: NetflixCommand, timeMs?: number): void {
+  const msg: NetflixCommandMessage = { type: NETFLIX_CMD_TYPE, action, timeMs };
+  window.postMessage(msg, window.location.origin);
+}
 
 /** Extract the title id from a /watch/<id> URL, null elsewhere on the site. */
 function parseVideoId(loc: Location): string | null {
@@ -21,6 +28,10 @@ function parseVideoId(loc: Location): string | null {
 
 export const netflixAdapter: PlatformAdapter = {
   platform: 'Netflix',
+
+  matches(hostname) {
+    return /(^|\.)netflix\.com$/.test(hostname);
+  },
 
   findVideo() {
     // Only the /watch page hosts the real player; browse pages autoplay muted
@@ -45,10 +56,19 @@ export const netflixAdapter: PlatformAdapter = {
   },
 
   seek(seconds) {
-    const msg: NetflixSeekMessage = {
-      type: NETFLIX_SEEK_TYPE,
-      timeMs: Math.round(seconds * 1000),
-    };
-    window.postMessage(msg, window.location.origin);
+    command('seek', Math.round(seconds * 1000));
   },
+
+  play() {
+    command('play');
+  },
+
+  pause() {
+    command('pause');
+  },
+
+  // Netflix re-asserts its own playback rate, so a ±5 % drift nudge either gets
+  // wiped (no correction) or sticks (permanent drift). Drift is corrected by
+  // seeking instead.
+  canNudgeRate: false,
 };

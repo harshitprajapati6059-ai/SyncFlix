@@ -53,6 +53,9 @@ interface PresenceState {
   username: string;
   role: UserRole;
   joinedAt: string;
+  inCall?: boolean;
+  cameraOn?: boolean;
+  micOn?: boolean;
   [key: string]: unknown;
 }
 
@@ -121,6 +124,9 @@ export function createRealtimeChannel(roomCode: string, user: ChannelUser): Real
         connected: true,
         joinedAt: p.joinedAt,
         lastSeen: now,
+        inCall: p.inCall,
+        cameraOn: p.cameraOn,
+        micOn: p.micOn,
       }))
       // joinedAt first; userId tiebreak so every client derives the same order
       // (host election picks the first entry — it must be deterministic).

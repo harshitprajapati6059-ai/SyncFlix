@@ -38,8 +38,10 @@ import type {
   ChatMessage,
   SyncEventType,
   UserRole,
+  VideoCallState,
 } from '@/types/room';
 import { createRealtimeChannel, type RealtimeChannel } from '@/services/realtimeService';
+import { createCallManager, type CallManager } from '@/services/webrtc';
 import {
   connectExtensionBridge,
   sendSyncEventToExtension,
@@ -47,6 +49,7 @@ import {
 } from '@/services/extensionBridge';
 import { getSessionIdentity } from '@/utils/session';
 import { youTubeWatchUrl } from '@/services/youtube';
+import { toast } from 'sonner';
 
 /** A remote sync event, delivered to the in-page player so it can apply it. */
 export type RemoteSyncHandler = (event: SyncEventType, payload: Record<string, unknown>) => void;
@@ -56,6 +59,19 @@ interface RoomContextValue extends RoomContextState {
   copyRoomCode: () => void;
   leaveRoom: () => void;
   broadcastEvent: (type: SyncEventType, payload: Record<string, unknown>) => void;
+
+  // ─── Video call ─────────────────────────────────────────────────────────────
+  videoCallState: VideoCallState;
+  /** Live remote streams keyed by userId, for rendering video tiles. */
+  remoteStreams: Record<string, MediaStream>;
+  joinCall: () => void;
+  leaveCall: () => void;
+  toggleCamera: () => void;
+  toggleMic: () => void;
+  /** Switch front/back camera. No-op on desktop or when the camera is off. */
+  switchCamera: () => void;
+  /** Not reactive state — read imperatively (e.g. to set a <video> srcObject). */
+  getLocalCallStream: () => MediaStream | null;
 
   // ─── In-page player plumbing ───────────────────────────────────────────────
   /** Declare the video the in-page player holds (null tears the player down). */
@@ -96,6 +112,25 @@ interface RoomProviderProps {
 const HEARTBEAT_INTERVAL_MS = 2000;
 /** Drift (seconds) beyond which a viewer is considered out of sync. */
 const DRIFT_DESYNC_THRESHOLD = 1.5;
+/** A player report older than this is assumed dead rather than aged forward. */
+const REPORT_STALE_MS = 5000;
+
+/**
+ * Age a timestamped player report forward to now, so the host broadcasts where
+ * its video *is* rather than where it was when the report arrived. Both clocks
+ * involved are this machine's, so no cross-device clock skew enters here.
+ * Returns null when there's no usable report.
+ */
+function agedPlayerReport(
+  report: { currentTime: number; playing: boolean; at: number } | null,
+  rate: number
+): { currentTime: number; playing: boolean } | null {
+  if (!report) return null;
+  const age = Date.now() - report.at;
+  if (age > REPORT_STALE_MS) return null;
+  if (!report.playing) return { currentTime: report.currentTime, playing: false };
+  return { currentTime: report.currentTime + (age / 1000) * (rate || 1), playing: true };
+}
 
 const INITIAL_PLAYBACK: PlaybackState = {
   playing: false,
@@ -163,6 +198,15 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     useState<RoomContextState['connectionStatus']>('connecting');
   const [events, setEvents] = useState<SyncEvent[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [videoCallState, setVideoCallState] = useState<VideoCallState>({
+    inCall: false,
+    cameraOn: false,
+    micOn: false,
+    hasMediaPermission: null,
+    peers: {},
+  });
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const callManagerRef = useRef<CallManager | null>(null);
 
   // ─── Host election ─────────────────────────────────────────────────────────
   // The host is derived from presence, not from the URL: the roster is sorted
@@ -209,6 +253,14 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       if (positionSampler.current === sampler) positionSampler.current = null;
     };
   }, []);
+
+  // The extension can't be sampled synchronously — it pushes a position once a
+  // second from another tab. Timestamping each report lets the heartbeat age it
+  // forward instead of broadcasting a position up to a full second old, which
+  // had every viewer being corrected backwards on every tick.
+  const lastPlayerReport = useRef<{ currentTime: number; playing: boolean; at: number } | null>(
+    null
+  );
 
   // True when our player tab is on a different video than the host's.
   const videoMismatch =
@@ -268,6 +320,42 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       return;
     }
     channelRef.current = channel;
+
+    const callManager = createCallManager(channel, identity.userId);
+    callManagerRef.current = callManager;
+
+    const unsubLocalCallState = callManager.onLocalStateChange((state) => {
+      if (!state.inCall && state.hasMediaPermission === false) {
+        toast.error(
+          'Camera/mic access was denied — check your browser permissions to join the call.'
+        );
+      }
+      setVideoCallState((prev) => ({ ...prev, ...state }));
+    });
+    const unsubRemoteStream = callManager.onRemoteStream((userId, stream) => {
+      setRemoteStreams((prev) => {
+        if (!stream) {
+          if (!(userId in prev)) return prev;
+          const next = { ...prev };
+          delete next[userId];
+          return next;
+        }
+        return { ...prev, [userId]: stream };
+      });
+    });
+    const unsubPeerStatus = callManager.onPeerStatusChange((userId, status) => {
+      setVideoCallState((prev) => {
+        const peers = { ...prev.peers };
+        if (status === 'closed') delete peers[userId];
+        else peers[userId] = status;
+        return { ...prev, peers };
+      });
+    });
+    const unsubBandwidthSafeguard = callManager.onBandwidthSafeguard(() => {
+      toast.info(
+        "Camera's off to save bandwidth in this larger call — turn it on manually if you'd like."
+      );
+    });
 
     channel.onStatusChange((status) => {
       setConnectionStatus(status);
@@ -439,11 +527,24 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     channel.connect();
 
     return () => {
+      unsubLocalCallState();
+      unsubRemoteStream();
+      unsubPeerStatus();
+      unsubBandwidthSafeguard();
+      callManager.destroy();
+      callManagerRef.current = null;
       channel.disconnect();
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
+
+  // Keep the call manager's peer list in step with who's actually in the call,
+  // as learned from presence (inCall flag) — same roster UsersPanel reads.
+  useEffect(() => {
+    const inCallIds = users.filter((u) => u.inCall).map((u) => u.userId);
+    callManagerRef.current?.syncPeers(inCallIds);
+  }, [users]);
 
   // ─── Extension bridge ────────────────────────────────────────────────────────
   // Detects the browser extension and exchanges playback events with it.
@@ -468,6 +569,9 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
           // only; the host's heartbeat interval broadcasts it to the room.
           const t = payload.currentTime;
           const playing = Boolean(payload.playing);
+          if (typeof t === 'number') {
+            lastPlayerReport.current = { currentTime: t, playing, at: Date.now() };
+          }
           setPlaybackState((prev) => ({
             ...prev,
             currentTime: typeof t === 'number' ? t : prev.currentTime,
@@ -532,9 +636,10 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
       const source = inPage.active ? inPage : extensionRef.current;
       // Prefer a position sampled right now over the throttled state mirror.
       const live = positionSampler.current?.() ?? null;
+      const now = live ?? agedPlayerReport(lastPlayerReport.current, pb.playbackRate);
       channelRef.current?.broadcast('POSITION_UPDATE', {
-        currentTime: live ? live.currentTime : pb.currentTime,
-        playing: live ? live.playing : pb.playing,
+        currentTime: now ? now.currentTime : pb.currentTime,
+        playing: now ? now.playing : pb.playing,
         videoId: source.videoId,
         videoUrl: source.videoUrl,
       });
@@ -576,6 +681,33 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
   const broadcastEvent = useCallback((type: SyncEventType, payload: Record<string, unknown>) => {
     channelRef.current?.broadcast(type, payload);
   }, []);
+
+  // ─── Video call plumbing ─────────────────────────────────────────────────────
+
+  const joinCall = useCallback(() => {
+    void callManagerRef.current?.join();
+  }, []);
+
+  const leaveCall = useCallback(() => {
+    callManagerRef.current?.leave();
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    void callManagerRef.current?.toggleCamera();
+  }, []);
+
+  const toggleMic = useCallback(() => {
+    callManagerRef.current?.toggleMic();
+  }, []);
+
+  const switchCamera = useCallback(() => {
+    void callManagerRef.current?.switchCamera();
+  }, []);
+
+  const getLocalCallStream = useCallback(
+    () => callManagerRef.current?.getLocalStream() ?? null,
+    []
+  );
 
   // ─── In-page player plumbing ────────────────────────────────────────────────
 
@@ -675,6 +807,14 @@ export function RoomProvider({ children, roomCode, isHost = false }: RoomProvide
     copyRoomCode,
     leaveRoom,
     broadcastEvent,
+    videoCallState,
+    remoteStreams,
+    joinCall,
+    leaveCall,
+    toggleCamera,
+    toggleMic,
+    switchCamera,
+    getLocalCallStream,
     setInPageVideo,
     reportInPagePosition,
     subscribeRemoteSync,

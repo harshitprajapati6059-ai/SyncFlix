@@ -72,7 +72,7 @@ export default function ExtensionPanel() {
       {isTouchDevice && extensionState?.status !== 'connected' && (
         <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">
           Mobile browsers can’t run extensions. Open “Watch here” above to play YouTube inside the
-          room. For Netflix, join from a computer with the extension installed.
+          room. For Netflix and Prime Video, join from a computer with the extension installed.
         </p>
       )}
     </div>

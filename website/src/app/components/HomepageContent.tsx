@@ -134,10 +134,9 @@ export default function HomepageContent() {
         <p className="mt-8 text-center text-xs text-muted-foreground leading-relaxed max-w-xs">
           Works with the SyncFlix browser extension.
           <br />
-          Supports YouTube and Netflix, with more platforms coming.
+          Supports YouTube, Netflix and Prime Video, with more platforms coming.
         </p>
       </div>
-
     </div>
   );
 }

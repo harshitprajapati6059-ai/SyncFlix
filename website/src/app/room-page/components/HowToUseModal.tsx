@@ -12,7 +12,7 @@ const STEPS = [
   {
     icon: Puzzle,
     title: 'Check the extension says "Connected"',
-    body: 'Click the SyncFlix icon in your browser toolbar. It should say "Connected" and show YouTube or Netflix. If it says "Waiting for video", open your video in a tab, or refresh the tab that already has it.',
+    body: 'Click the SyncFlix icon in your browser toolbar. It should say "Connected" and name the platform it found. If it says "Waiting for video", open your video in a tab, or refresh the tab that already has it.',
   },
   {
     icon: Hash,
@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: MonitorPlay,
     title: 'Make sure everyone has the same video open',
-    body: 'Each person opens the exact same video in their own tab. Same YouTube video, or same Netflix episode. If you are on different videos, sync stays off on purpose, so nothing messes with your playback.',
+    body: 'Each person opens the exact same video in their own tab. Same YouTube video, same Netflix episode, same Prime Video title. If you are on different videos, sync stays off on purpose, so nothing messes with your playback.',
   },
   {
     icon: Play,

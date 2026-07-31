@@ -61,17 +61,23 @@ export interface WindowEnvelope {
 }
 
 // ─── Netflix main-world bridge ──────────────────────────────────────────────
-// Netflix's player breaks when video.currentTime is written directly, so the
-// isolated-world adapter asks a main-world script (netflix-page.ts) to seek
-// through Netflix's own player API. window.postMessage is the only transport
-// that crosses the isolated/main world boundary.
+// Netflix's player breaks when the <video> element is driven directly: writing
+// currentTime stalls it, and play()/pause() on the element desync its own state
+// machine, which then re-asserts itself and produces a pause/play storm. So the
+// isolated-world adapter asks a main-world script (netflix-page.ts) to drive
+// playback through Netflix's own player API. window.postMessage is the only
+// transport that crosses the isolated/main world boundary.
 
 /** window message type: isolated-world adapter → main-world Netflix script. */
-export const NETFLIX_SEEK_TYPE = 'SYNCFLIX_NETFLIX_SEEK';
+export const NETFLIX_CMD_TYPE = 'SYNCFLIX_NETFLIX_CMD';
 
-export interface NetflixSeekMessage {
-  type: typeof NETFLIX_SEEK_TYPE;
-  timeMs: number;
+export type NetflixCommand = 'seek' | 'play' | 'pause';
+
+export interface NetflixCommandMessage {
+  type: typeof NETFLIX_CMD_TYPE;
+  action: NetflixCommand;
+  /** Target position, `seek` only. */
+  timeMs?: number;
 }
 
 // ─── Port messages (content scripts ⇄ service worker) ───────────────────────

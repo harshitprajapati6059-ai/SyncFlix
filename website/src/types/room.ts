@@ -14,6 +14,10 @@ export interface PresenceUser {
   connected: boolean;
   joinedAt: string; // ISO timestamp
   lastSeen: string; // ISO timestamp
+  /** True while this user has joined the video call (not just the room). */
+  inCall?: boolean;
+  cameraOn?: boolean;
+  micOn?: boolean;
 }
 
 // ─── Room ────────────────────────────────────────────────────────────────────
@@ -39,7 +43,7 @@ export interface PlaybackState {
   /** Total length in seconds. 0 when unknown — the extension doesn't report it. */
   duration: number;
   playbackRate: number; // 1.0 = normal
-  platform: string | null; // "YouTube" | "Netflix" | null — provided by extension
+  platform: string | null; // "YouTube" | "Netflix" | "Prime Video" | null — provided by extension
   lastUpdated: string; // ISO timestamp
   updatedBy: string; // userId
 }
@@ -115,7 +119,8 @@ export type SyncEventType =
   | 'PLATFORM_CHANGED'
   | 'USER_CONNECTED'
   | 'USER_DISCONNECTED'
-  | 'CHAT_MESSAGE';
+  | 'CHAT_MESSAGE'
+  | 'WEBRTC_SIGNAL';
 
 export interface SyncEvent {
   id: string;
@@ -179,6 +184,27 @@ export interface UserConnectedPayload {
 export interface UserDisconnectedPayload {
   userId: string;
   username: string;
+}
+
+/** A targeted WebRTC signaling message — every peer ignores signals not addressed to it. */
+export interface WebrtcSignalPayload {
+  to: string; // recipient userId
+  kind: 'offer' | 'answer' | 'ice';
+  data: unknown; // RTCSessionDescriptionInit | RTCIceCandidateInit
+}
+
+// ─── Video Call ────────────────────────────────────────────────────────────
+
+export type PeerConnectionStatus = 'connecting' | 'connected' | 'failed' | 'closed';
+
+export interface VideoCallState {
+  /** True once the local user has called joinCall(). */
+  inCall: boolean;
+  cameraOn: boolean;
+  micOn: boolean;
+  /** null = not yet requested, false = user denied it. */
+  hasMediaPermission: boolean | null;
+  peers: Record<string, PeerConnectionStatus>;
 }
 
 // ─── Room Context State ───────────────────────────────────────────────────────
