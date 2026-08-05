@@ -61,6 +61,12 @@ export function getEventMeta(type: SyncEventType): EventMeta {
         colorClass: 'text-muted-foreground',
         dotClass: 'bg-muted-foreground',
       };
+    case 'HOST_TRANSFER':
+      return {
+        label: 'Host changed',
+        colorClass: 'text-[var(--status-host)]',
+        dotClass: 'bg-[var(--status-host)]',
+      };
     case 'PLATFORM_CHANGED':
       return {
         label: 'Platform',

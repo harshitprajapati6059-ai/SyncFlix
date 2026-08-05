@@ -67,7 +67,61 @@
   }
 }
 
+/**
+ * A call reaction drifting up the tiles and fading out. The horizontal sway is
+ * what stops a burst of the same emoji reading as a straight column, and the
+ * duration must stay in step with REACTION_LIFETIME_MS in RoomContext — the
+ * animation is what the timer is clearing up after.
+ */
+@keyframes syncflix-reaction-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(0, -10%) scale(1.15);
+  }
+  40% {
+    transform: translate(14px, -45%) scale(1);
+  }
+  70% {
+    opacity: 0.85;
+    transform: translate(-10px, -100%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, -150%) scale(0.85);
+  }
+}
+
+/** Reduced-motion counterpart: same lifetime, no travel. */
+@keyframes syncflix-reaction-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  15%,
+  70% {
+    opacity: 1;
+  }
+}
+
 @layer utilities {
+  .animate-reaction-float {
+    animation: syncflix-reaction-float 4s ease-out forwards;
+    will-change: transform, opacity;
+  }
+
+  /* A reaction is decoration; honour a request for less motion by simply
+     letting it appear and fade without the travel. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-reaction-float {
+      animation: syncflix-reaction-float 4s linear forwards;
+      animation-name: syncflix-reaction-fade;
+    }
+  }
+
   .font-mono-data {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

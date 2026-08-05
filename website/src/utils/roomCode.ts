@@ -34,3 +34,17 @@ export function normalizeRoomCode(input: string): string {
     .replace(/[^A-Z0-9]/g, '')
     .slice(0, 6);
 }
+
+/**
+ * Builds the shareable invite URL for a room — the SyncFlix equivalent of a
+ * Google Meet link. Opening it lands on the join screen with the code already
+ * filled in, so the guest only picks a display name.
+ *
+ * Origin comes from the browser, so this returns '' on the server. Callers
+ * should build it in an effect and treat '' as "not ready yet".
+ */
+export function buildInviteLink(code: string): string {
+  const normalized = normalizeRoomCode(code ?? '');
+  if (!normalized || typeof window === 'undefined') return '';
+  return `${window.location.origin}/join-room?code=${normalized}`;
+}

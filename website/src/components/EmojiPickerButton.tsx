@@ -18,18 +18,41 @@ const MIN_HEIGHT = 160;
 type PanelRect = { top: number; left: number; width: number; height: number };
 
 /**
- * Chat emoji button — opens an Apple-style emoji panel (same Apple emoji
- * artwork used everywhere else via AppleEmojiText) and inserts the picked
- * emoji into the chat input. The panel is portaled to <body> and positioned
- * against the viewport (not the chat panel's clipped/narrow container) so it
- * always fits and never gets cut off, on any screen size.
+ * Emoji button. Opens an Apple-style emoji panel (same Apple emoji artwork
+ * used everywhere else via AppleEmojiText) and hands the picked emoji back.
+ * The panel is portaled to <body> and positioned against the viewport (not the
+ * chat panel's clipped/narrow container) so it always fits and never gets cut
+ * off, on any screen size.
+ *
+ * Used twice in chat: composing a message, and picking a reaction beyond the
+ * quick row, hence the overridable trigger.
  */
 export default function EmojiPickerButton({
   onEmojiSelect,
+  icon,
+  ariaLabel = 'Add emoji',
+  buttonClassName,
+  onOpenChange,
 }: {
   onEmojiSelect: (emoji: string) => void;
+  /** Trigger contents. Defaults to the composer's smiley. */
+  icon?: React.ReactNode;
+  ariaLabel?: string;
+  /** Replaces the default trigger styling outright when supplied. */
+  buttonClassName?: string;
+  /**
+   * Fires as the panel opens and closes. A surrounding popover needs this: the
+   * panel is portaled to <body>, so clicks inside it look like outside clicks
+   * and would otherwise tear that popover (and this button) down mid-click.
+   */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    onOpenChangeRef.current?.(open);
+  }, [open]);
   const [rect, setRect] = useState<PanelRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -108,12 +131,15 @@ export default function EmojiPickerButton({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className={`shrink-0 p-1 rounded-lg transition-all duration-150 active:scale-95 ${
-          open ? 'text-primary' : 'text-muted-foreground hover:text-primary'
-        }`}
-        aria-label="Add emoji"
+        className={
+          buttonClassName ??
+          `shrink-0 p-1 rounded-lg transition-all duration-150 active:scale-95 ${
+            open ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+          }`
+        }
+        aria-label={ariaLabel}
       >
-        <Smile size={15} />
+        {icon ?? <Smile size={15} />}
       </button>
 
       {open &&

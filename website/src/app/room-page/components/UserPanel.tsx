@@ -1,14 +1,26 @@
 'use client';
 
-import React from 'react';
-import { Users } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Users, Crown } from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
 import RoleBadge from '@/components/ui/RoleBadge';
 import ConnectionDot from '@/components/ui/ConnectionDot';
 import { relativeTime } from '@/utils/time';
 
+/** How long a pending "Make host" click stays armed before reverting. */
+const CONFIRM_TIMEOUT_MS = 4000;
+
 export default function UsersPanel() {
-  const { users } = useRoom();
+  const { users, amHost, hostId, transferHost } = useRoom();
+
+  // Handing over the host role can't be undone by the person giving it away —
+  // the new host has to hand it back — so the button arms before it fires.
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingId) return;
+    const timer = setTimeout(() => setPendingId(null), CONFIRM_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [pendingId]);
 
   const connectedCount = users?.filter((u) => u?.connected)?.length;
 
@@ -65,7 +77,32 @@ export default function UsersPanel() {
                   </div>
                 </div>
 
-                <RoleBadge role={user?.role} size="sm" />
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Only the host sees this, and only against other people. */}
+                  {amHost && user?.userId !== hostId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pendingId === user.userId) {
+                          setPendingId(null);
+                          transferHost(user.userId);
+                        } else {
+                          setPendingId(user.userId);
+                        }
+                      }}
+                      title={`Make ${user?.username} the host`}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                        pendingId === user.userId
+                          ? 'border-[var(--status-host)] bg-[var(--status-host-bg)] text-[var(--status-host)]'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:border-[var(--status-host)]/40'
+                      }`}
+                    >
+                      <Crown size={10} />
+                      {pendingId === user.userId ? 'Confirm' : 'Make host'}
+                    </button>
+                  )}
+                  <RoleBadge role={user?.role} size="sm" />
+                </div>
               </li>
             ))}
           </ul>

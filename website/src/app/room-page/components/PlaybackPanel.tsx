@@ -1,13 +1,32 @@
 'use client';
 
 import React from 'react';
-import { Play, Pause, Clock, Gauge, Wifi, ExternalLink, AlertTriangle } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  Clock,
+  Gauge,
+  Wifi,
+  ExternalLink,
+  AlertTriangle,
+  Lock,
+  LockOpen,
+} from 'lucide-react';
 import { useRoom } from '@/context/RoomContext';
 import SyncStatusBadge from '@/components/ui/SyncStatusBadge';
 import { formatPlaybackTime, relativeTime } from '@/utils/time';
 
 export default function PlaybackPanel() {
-  const { playbackState, syncState, room, hostVideo, videoMismatch } = useRoom();
+  const {
+    playbackState,
+    syncState,
+    room,
+    hostVideo,
+    videoMismatch,
+    amHost,
+    hostOnlyControl,
+    setHostOnlyControl,
+  } = useRoom();
 
   // The in-page player reports a real duration; the extension never has, so
   // treat 0 as "unknown" and show an indeterminate bar rather than inventing a
@@ -53,6 +72,56 @@ export default function PlaybackPanel() {
           )}
         </div>
       )}
+      {/* Host-only control lock. The host toggles it; everyone else sees where
+          it stands, so a viewer whose pause went nowhere knows why. */}
+      <div className="card p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            {hostOnlyControl ? (
+              <Lock size={14} className="text-[var(--status-host)]" />
+            ) : (
+              <LockOpen size={14} className="text-muted-foreground" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">Host controls only</p>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              {hostOnlyControl
+                ? 'Only the host’s play, pause and seek move the room.'
+                : 'Anyone can play, pause or seek for everyone.'}
+            </p>
+          </div>
+        </div>
+
+        {amHost ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hostOnlyControl}
+            aria-label="Host controls only"
+            onClick={() => setHostOnlyControl(!hostOnlyControl)}
+            className={`relative w-11 h-6 rounded-full shrink-0 transition-colors duration-150 ${
+              hostOnlyControl ? 'bg-[var(--status-host)]' : 'bg-muted border border-border'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-150 ${
+                hostOnlyControl ? 'left-[22px]' : 'left-0.5'
+              }`}
+            />
+          </button>
+        ) : (
+          <span
+            className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-full shrink-0 ${
+              hostOnlyControl
+                ? 'bg-[var(--status-host-bg)] text-[var(--status-host)]'
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            {hostOnlyControl ? 'On' : 'Off'}
+          </span>
+        )}
+      </div>
       {/* Playback status card */}
       <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5">
         {/* Platform + Status row */}

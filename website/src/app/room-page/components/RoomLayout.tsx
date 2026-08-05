@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { MonitorPlay, ChevronDown, ChevronUp } from 'lucide-react';
 import PlaybackPanel from './PlaybackPanel';
 import UsersPanel from './UserPanel';
@@ -10,6 +10,7 @@ import ExtensionPanel from './ExtensionPanel';
 import InPagePlayer from './InPagePlayer';
 import VideoCallPanel from './VideoCallPanel';
 import { useRoom } from '@/context/RoomContext';
+import { useChatNotifications } from '@/hooks/useChatNotifications';
 
 type Tab = 'playback' | 'users' | 'chat' | 'events' | 'video';
 type RightTab = Exclude<Tab, 'playback'>;
@@ -20,7 +21,25 @@ export default function RoomLayout() {
   // slot, so it stays closed until someone asks for it rather than being the
   // default surface for every mobile visitor.
   const [watchHereOpen, setWatchHereOpen] = useState(false);
+  // The call taking over the whole room area, for when the point of the session
+  // is the call rather than the video being watched alongside it.
+  const [callMaximized, setCallMaximized] = useState(false);
   const { extensionState, hostVideo, videoCallState } = useRoom();
+
+  // Hanging up leaves nothing to be maximised into.
+  useEffect(() => {
+    if (!videoCallState.inCall) setCallMaximized(false);
+  }, [videoCallState.inCall]);
+
+  // Esc is the expected way out of anything that has taken over the screen.
+  useEffect(() => {
+    if (!callMaximized) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCallMaximized(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [callMaximized]);
 
   // Only one thing may drive playback. When the extension is attached it owns a
   // real video tab and the in-page player would be a second, competing source;
@@ -34,6 +53,15 @@ export default function RoomLayout() {
   // On md+ the playback column is always visible, so the right panel
   // falls back to 'users' while the mobile-only 'playback' tab is active.
   const rightTab: RightTab = tab === 'playback' ? 'users' : tab;
+
+  // The chat panel is mounted only while its tab is selected, on desktop too,
+  // since the right column shows one panel at a time. So this single test is
+  // what "the user can see the chat" means on every screen size.
+  const openChat = useCallback(() => setTab('chat'), []);
+  const { unreadCount, unreadMentions } = useChatNotifications({
+    chatOpen: tab === 'chat',
+    onOpenChat: openChat,
+  });
 
   const mobileTabs: { id: Tab; label: string }[] = [
     { id: 'playback', label: 'Playback' },
@@ -50,12 +78,51 @@ export default function RoomLayout() {
     { id: 'events', label: 'Events' },
   ];
 
+  /**
+   * The marker on a tab that wants attention. Chat carries a count so you can
+   * tell one stray message from a conversation you've missed; a mention turns it
+   * amber, since a ping is a different kind of ask than ordinary chatter.
+   */
+  const tabBadge = (id: Tab) => {
+    if (id === 'video' && videoCallState.inCall) {
+      return (
+        <span className="absolute top-1.5 right-1/2 translate-x-4 h-1.5 w-1.5 rounded-full bg-primary" />
+      );
+    }
+    if (id === 'chat' && unreadCount > 0) {
+      return (
+        <span
+          className={`absolute top-1 right-1/2 translate-x-5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold leading-4 text-center font-mono-data ${
+            unreadMentions > 0
+              ? 'bg-[var(--status-warning)] text-background'
+              : 'bg-primary text-primary-foreground'
+          }`}
+        >
+          {unreadCount > 9 ? '9+' : unreadCount}
+        </span>
+      );
+    }
+    return null;
+  };
+
   const tabButtonClass = (active: boolean) =>
     `flex-1 py-2.5 text-xs font-semibold transition-all duration-150 border-b-2 ${
       active
         ? 'border-primary text-primary'
         : 'border-transparent text-muted-foreground hover:text-foreground'
     }`;
+
+  // Maximised: the call replaces the room body outright rather than overlaying
+  // it, so there is no second scroll container and the controls keep their
+  // place at the bottom. RoomHeader stays above, so leaving the room is still
+  // one click away.
+  if (callMaximized) {
+    return (
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <VideoCallPanel maximized onToggleMaximize={() => setCallMaximized(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
@@ -68,9 +135,7 @@ export default function RoomLayout() {
             className={`${tabButtonClass(tab === t.id)} relative`}
           >
             {t.label}
-            {t.id === 'video' && videoCallState.inCall && (
-              <span className="absolute top-1.5 right-1/2 translate-x-4 h-1.5 w-1.5 rounded-full bg-primary" />
-            )}
+            {tabBadge(t.id)}
           </button>
         ))}
       </div>
@@ -121,11 +186,16 @@ export default function RoomLayout() {
         <ExtensionPanel />
       </div>
 
-      {/* Right column — tabbed panel */}
+      {/* Right column: tabbed panel.
+          Width is a share of the window rather than a fixed 320px, so a
+          half-screen browser gives chat a proportional slice instead of the
+          same absolute column it would get on a full-width monitor. The clamps
+          keep it readable at the narrow end and stop it eating the video at the
+          wide end. */}
       <div
         className={`${
           tab === 'playback' ? 'hidden' : 'flex'
-        } md:flex w-full md:w-80 xl:w-96 flex-col flex-1 md:flex-none min-w-0 min-h-0 overflow-hidden`}
+        } md:flex w-full md:w-[34%] md:min-w-[19rem] md:max-w-[26rem] flex-col flex-1 md:flex-none min-w-0 min-h-0 overflow-hidden`}
       >
         {/* Desktop tab bar */}
         <div className="hidden md:flex border-b border-border shrink-0">
@@ -136,9 +206,7 @@ export default function RoomLayout() {
               className={`${tabButtonClass(rightTab === t.id)} relative`}
             >
               {t.label}
-              {t.id === 'video' && videoCallState.inCall && (
-                <span className="absolute top-1.5 right-1/2 translate-x-4 h-1.5 w-1.5 rounded-full bg-primary" />
-              )}
+              {tabBadge(t.id)}
             </button>
           ))}
         </div>
@@ -146,7 +214,9 @@ export default function RoomLayout() {
         {/* Tab content */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {rightTab === 'users' && <UsersPanel />}
-          {rightTab === 'video' && <VideoCallPanel />}
+          {rightTab === 'video' && (
+            <VideoCallPanel onToggleMaximize={() => setCallMaximized(true)} />
+          )}
           {rightTab === 'chat' && <ChatPanel />}
           {rightTab === 'events' && <EventLogPanel />}
         </div>

@@ -22,5 +22,21 @@ export function createClient() {
     );
   }
 
-  return createBrowserClient(url, anonKey);
+  return createBrowserClient(url, anonKey, {
+    realtime: {
+      params: {
+        // supabase-js defaults to 10 messages/second per client, which WebRTC
+        // signaling blows straight through: bringing up one peer bursts an SDP
+        // offer plus a few dozen trickled ICE candidates inside a second, and
+        // in a mesh call that is multiplied by the number of peers. Everything
+        // over the limit is silently throttled away, which is what made calls
+        // fail to connect — or connect in only one direction, when one side's
+        // candidates survived and the other's did not.
+        //
+        // webrtc.ts also batches ICE candidates to keep the real rate low; this
+        // headroom is what stops a burst from being dropped in the first place.
+        eventsPerSecond: 100,
+      },
+    },
+  });
 }

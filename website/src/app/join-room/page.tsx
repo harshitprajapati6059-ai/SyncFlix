@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import JoinRoomContent from './components/JoinRoomContent';
 
@@ -8,5 +8,15 @@ export const metadata: Metadata = {
 };
 
 export default function JoinRoomPage() {
-  return <JoinRoomContent />;
+  // The form reads ?code= from an invite link via useSearchParams, which has to
+  // sit under a Suspense boundary or the page can't be statically rendered.
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-background" />
+      }
+    >
+      <JoinRoomContent />
+    </Suspense>
+  );
 }

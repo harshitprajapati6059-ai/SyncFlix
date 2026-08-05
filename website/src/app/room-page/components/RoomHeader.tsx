@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Download, CircleHelp, BookOpen } from 'lucide-react';
+import { LogOut, Download, CircleHelp, BookOpen, Link2 } from 'lucide-react';
 import SyncLogo from '@/components/ui/SyncLogo';
 import CopyButton from '@/components/ui/CopyButton';
 import ConnectionDot from '@/components/ui/ConnectionDot';
@@ -11,6 +11,7 @@ import InstallExtensionModal from './InstallExtensionModal';
 import HowToUseModal from './HowToUseModal';
 import { useRoom } from '@/context/RoomContext';
 import { useIsTouchDevice } from '@/hooks/useMediaQuery';
+import { buildInviteLink } from '@/utils/roomCode';
 
 export default function RoomHeader() {
   const router = useRouter();
@@ -18,6 +19,11 @@ export default function RoomHeader() {
   const isTouchDevice = useIsTouchDevice();
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [showUsageHelp, setShowUsageHelp] = useState(false);
+
+  // Built after mount — the link needs window.location.origin, which the
+  // server render doesn't have.
+  const [inviteLink, setInviteLink] = useState('');
+  useEffect(() => setInviteLink(buildInviteLink(room?.code ?? '')), [room?.code]);
 
   const handleLeave = () => {
     leaveRoom();
@@ -51,6 +57,17 @@ export default function RoomHeader() {
           </code>
           <CopyButton value={room?.code ?? ''} label="room code" />
         </div>
+
+        <CopyButton
+          value={inviteLink}
+          label="Invite link"
+          icon={Link2}
+          size={13}
+          className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+          title={inviteLink ? `Copy invite link — ${inviteLink}` : 'Copy invite link'}
+        >
+          <span className="hidden md:inline">Copy invite link</span>
+        </CopyButton>
       </div>
       {/* Right: Status + Role + Leave */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">

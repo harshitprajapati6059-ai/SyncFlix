@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Hash, Loader2, AlertCircle, ArrowRight, User, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import SyncLogo from '@/components/ui/SyncLogo';
@@ -21,11 +21,26 @@ const ERROR_MESSAGES: Record<NonNullable<ErrorType>, string> = {
 
 export default function JoinRoomContent() {
   const router = useRouter();
-  const [code, setCode] = useState('');
+  const searchParams = useSearchParams();
+  // Set when the user arrived from a shared invite link (/join-room?code=AB12CD).
+  const invitedCode = normalizeRoomCode(searchParams?.get('code') ?? '');
+
+  const [code, setCode] = useState(invitedCode);
   const [username, setUsername] = useState(() => generateUsername());
   const [isLoading, setIsLoading] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // With the code already filled in, the only thing left to decide is the
+  // display name — so start there.
+  useEffect(() => {
+    if (invitedCode) {
+      setCode(invitedCode);
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    }
+  }, [invitedCode]);
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,7 +137,9 @@ export default function JoinRoomContent() {
           <div>
             <h1 className="text-lg font-semibold text-foreground mb-1">Join a room</h1>
             <p className="text-xs text-muted-foreground">
-              Enter the 6-character code shared by the host.
+              {invitedCode
+                ? "You've been invited — pick a display name and you're in."
+                : 'Enter the 6-character code shared by the host.'}
             </p>
           </div>
 
@@ -202,6 +219,7 @@ export default function JoinRoomContent() {
                 <User size={15} className="text-muted-foreground" />
               </div>
               <input
+                ref={nameRef}
                 id="display-name"
                 type="text"
                 value={username}

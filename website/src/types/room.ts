@@ -14,10 +14,19 @@ export interface PresenceUser {
   connected: boolean;
   joinedAt: string; // ISO timestamp
   lastSeen: string; // ISO timestamp
+  /**
+   * Host-transfer counter. The highest value in the room wins the host role,
+   * overriding the joinedAt order. 0/undefined = never handed the role.
+   */
+  hostSeq?: number;
+  /** Host-only playback lock, as published by whoever currently holds the role. */
+  hostOnly?: boolean;
   /** True while this user has joined the video call (not just the room). */
   inCall?: boolean;
   cameraOn?: boolean;
   micOn?: boolean;
+  /** True while this user is sending their screen instead of their camera. */
+  screenSharing?: boolean;
 }
 
 // ─── Room ────────────────────────────────────────────────────────────────────
@@ -97,12 +106,47 @@ export interface InPagePlayerState {
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
+/** Reactions on one message: emoji → the userIds that picked it. */
+export type ChatReactions = Record<string, string[]>;
+
+/**
+ * The message a reply points at.
+ *
+ * Snapshotted rather than looked up by id: there is no chat history server, so
+ * someone who joined after the original was sent has no way to resolve it, and
+ * the quote would render blank for them.
+ */
+export interface ChatReplyRef {
+  id: string;
+  userId: string;
+  username: string;
+  /** Preview of the original text, truncated at send time. */
+  message: string;
+}
+
 export interface ChatMessage {
   id: string;
   userId: string;
   username: string;
   message: string;
   timestamp: string;
+  /** Set when this message was sent as a reply to another one. */
+  replyTo?: ChatReplyRef | null;
+  /**
+   * userIds this message pings, resolved by the sender against the roster they
+   * could see. MENTION_EVERYONE ('*') stands in for the whole room.
+   */
+  mentions?: string[];
+  reactions?: ChatReactions;
+  /**
+   * Set when the sender withdrew this message for everyone. The row stays in
+   * place as a tombstone rather than vanishing, so a conversation that was
+   * replying to it doesn't silently lose its subject.
+   *
+   * "Delete for me" is not this: it drops the message from one person's list
+   * outright and never leaves the client.
+   */
+  deleted?: boolean;
 }
 
 // ─── Event Log ───────────────────────────────────────────────────────────────
@@ -120,6 +164,10 @@ export type SyncEventType =
   | 'USER_CONNECTED'
   | 'USER_DISCONNECTED'
   | 'CHAT_MESSAGE'
+  | 'CHAT_REACTION'
+  | 'CHAT_DELETE'
+  | 'CALL_REACTION'
+  | 'HOST_TRANSFER'
   | 'WEBRTC_SIGNAL';
 
 export interface SyncEvent {
@@ -186,16 +234,116 @@ export interface UserDisconnectedPayload {
   username: string;
 }
 
-/** A targeted WebRTC signaling message — every peer ignores signals not addressed to it. */
-export interface WebrtcSignalPayload {
+/**
+ * A chat message on the wire.
+ *
+ * The id is minted by the sender and shared by every client, so reactions and
+ * replies can address a message across the room. (The pre-reaction chat used a
+ * local counter, which named the same message differently on every screen.)
+ */
+export interface ChatMessagePayload {
+  id: string;
+  message: string;
+  replyTo?: ChatReplyRef | null;
+  mentions?: string[];
+}
+
+/**
+ * One person adding or removing one emoji on one message.
+ *
+ * `active` carries the resulting state rather than "toggle", so applying the
+ * same event twice, which happens because the channel echoes our own sends back
+ * on top of the optimistic update, lands on the same result.
+ */
+export interface ChatReactionPayload {
+  messageId: string;
+  emoji: string;
+  active: boolean;
+}
+
+/**
+ * The sender withdrawing one of their own messages from the whole room.
+ *
+ * Recipients honour it only when the sender owns the message, so nobody can
+ * delete anyone else's words. "Delete for me" has no payload because it never
+ * reaches the wire.
+ */
+export interface ChatDeletePayload {
+  messageId: string;
+}
+
+/**
+ * The host handing the role to someone else.
+ *
+ * Only the recipient acts on it: they publish `seq` into their own presence,
+ * and every client re-elects from the roster. `seq` is a counter rather than a
+ * timestamp so transfers order correctly no matter how far apart the
+ * participants' clocks are.
+ */
+export interface HostTransferPayload {
   to: string; // recipient userId
-  kind: 'offer' | 'answer' | 'ice';
-  data: unknown; // RTCSessionDescriptionInit | RTCIceCandidateInit
+  toUsername: string; // for the log line, so viewers can name them
+  seq: number;
+  /** The lock state the outgoing host was running, so it survives the handover. */
+  hostOnly: boolean;
+}
+
+/**
+ * A targeted WebRTC signaling message — every peer ignores signals not addressed
+ * to it. `to: '*'` addresses everyone in the room (used by the presence-independent
+ * `hello`/`bye` announcements, which would otherwise cost one message per peer).
+ *
+ * Kinds:
+ *   offer/answer → SDP exchange
+ *   ice          → a *batch* of ICE candidates (see webrtc.ts: candidates are
+ *                  coalesced to stay under the Realtime per-client event rate limit)
+ *   hello        → "I'm in the call" — lets peers pair up without waiting on presence
+ *   bye          → "I left the call" — tears the connection down immediately
+ *   reset        → "drop our connection and rebuild it at generation `gen`"
+ */
+export interface WebrtcSignalPayload {
+  to: string; // recipient userId, or '*' for everyone
+  kind: 'offer' | 'answer' | 'ice' | 'hello' | 'bye' | 'reset';
+  data: unknown; // RTCSessionDescriptionInit | RTCIceCandidateInit[] | null
+  /**
+   * Connection generation. Bumped whenever a peer gives up on a stuck connection
+   * and rebuilds it, so both sides can discard signals belonging to a dead
+   * RTCPeerConnection instead of applying them to the new one.
+   */
+  gen?: number;
 }
 
 // ─── Video Call ────────────────────────────────────────────────────────────
 
 export type PeerConnectionStatus = 'connecting' | 'connected' | 'failed' | 'closed';
+
+/**
+ * Why we have no camera/mic. These need telling apart because only one of them
+ * is the user's to fix: `denied` is a browser permission prompt, whereas
+ * `insecure` is the page being served over plain http — which is what a phone
+ * gets when it opens a dev server by LAN IP, and no amount of tapping "allow"
+ * will help. `unavailable` covers a device with no working capture hardware.
+ */
+export type CallMediaError = 'denied' | 'insecure' | 'unavailable';
+
+/** One emoji someone threw at the call, as it goes over the wire. */
+export interface CallReactionPayload {
+  emoji: string;
+}
+
+/**
+ * A reaction in flight on this client. Deliberately not persisted anywhere —
+ * it exists only for the few seconds it spends floating up the tiles, so each
+ * client mints its own id rather than the sender naming it.
+ */
+export interface CallReaction {
+  id: string;
+  userId: string;
+  username: string;
+  emoji: string;
+  /** Horizontal start, 0–100, so simultaneous reactions don't stack in a line. */
+  offset: number;
+}
 
 export interface VideoCallState {
   /** True once the local user has called joinCall(). */
@@ -204,6 +352,12 @@ export interface VideoCallState {
   micOn: boolean;
   /** null = not yet requested, false = user denied it. */
   hasMediaPermission: boolean | null;
+  /** Set when we're in the call without local media — see CallMediaError. */
+  mediaError: CallMediaError | null;
+  /** True while we're sending our screen in place of our camera. */
+  screenSharing: boolean;
+  /** False where getDisplayMedia doesn't exist — every current mobile browser. */
+  canScreenShare: boolean;
   peers: Record<string, PeerConnectionStatus>;
 }
 
@@ -227,4 +381,11 @@ export interface RoomContextState {
   inPagePlayer: InPagePlayerState;
   /** True when this client is the presence-elected host. */
   amHost: boolean;
+  /** userId of the current host, or null until presence first syncs. */
+  hostId: string | null;
+  /**
+   * When true, only the host's play/pause/seek moves the room; viewers control
+   * their own player without dragging everyone else along. Off by default.
+   */
+  hostOnlyControl: boolean;
 }

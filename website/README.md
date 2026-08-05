@@ -25,6 +25,23 @@ A modern Next.js 15 application built with TypeScript and Tailwind CSS.
   ```
 3. Open [http://localhost:4028](http://localhost:4028) with your browser to see the result.
 
+## 🔑 Environment
+
+Create `website/.env.local`:
+
+```bash
+# Required — Supabase dashboard → Project Settings → API
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+
+# Optional — TURN relay for video calls. Without one, peers behind symmetric
+# NAT (common on mobile networks) can't connect. Falls back to the free public
+# OpenRelay service when unset. Comma-separate multiple URLs.
+NEXT_PUBLIC_TURN_URL=turn:turn.example.com:3478
+NEXT_PUBLIC_TURN_USERNAME=<username>
+NEXT_PUBLIC_TURN_CREDENTIAL=<credential>
+```
+
 ## 📁 Project Structure
 
 ```
